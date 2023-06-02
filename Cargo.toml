@@ -1,0 +1,18 @@
+[package]
+name = "sponza"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { git = "https://github.com/bevyengine/bevy", rev = "4ce37395da029eb8b58c78c32812fe8329a3a1a4", features = ["ktx2", "zstd"] }
+
+image = "0.24"
+anyhow = "1.0"
+threadpool = "1.8"
+futures-lite = "1.12"
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev]
+opt-level = 3
