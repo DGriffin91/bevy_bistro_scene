@@ -44,7 +44,7 @@ pub fn convert_images_to_ktx2() {
                         cmd.arg("-type")
                             .arg("2d")
                             .arg("-mipmin")
-                            .arg("2")
+                            .arg("1")
                             .arg("-mipmax")
                             .arg("512")
                             .arg("-srgb")
