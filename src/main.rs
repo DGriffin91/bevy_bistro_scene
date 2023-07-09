@@ -5,7 +5,10 @@ mod mipmap_generator;
 
 use bevy::{
     asset::ChangeWatcher,
-    core_pipeline::{bloom::BloomSettings, fxaa::Fxaa},
+    core_pipeline::{
+        bloom::BloomSettings,
+        experimental::taa::{TemporalAntiAliasBundle, TemporalAntiAliasPlugin},
+    },
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     pbr::CascadeShadowConfigBuilder,
     prelude::*,
@@ -32,7 +35,6 @@ pub fn main() {
     let mut app = App::new();
 
     app.insert_resource(Msaa::Off)
-        //.insert_resource(DefaultOpaqueRendererMethod(OpaqueRendererMethod::Forward))
         .insert_resource(ClearColor(Color::rgb(1.75, 1.9, 1.99)))
         .insert_resource(AmbientLight {
             color: Color::rgb(1.0, 1.0, 1.0),
@@ -52,19 +54,24 @@ pub fn main() {
                     ..default()
                 }),
         )
-        .add_plugin(LogDiagnosticsPlugin::default())
-        .add_plugin(FrameTimeDiagnosticsPlugin::default())
-        .add_plugin(CameraControllerPlugin)
         // Generating mipmaps takes a minute
+        // Mipmap generation be skipped if ktx2 is used
         .insert_resource(MipmapGeneratorSettings {
             anisotropic_filtering: NonZeroU8::new(16),
             ..default()
         })
-        .add_plugin(MipmapGeneratorPlugin)
-        // Mipmap generation be skipped if ktx2 is used
-        .add_systems(Update, generate_mipmaps::<StandardMaterial>)
+        .add_plugins((
+            LogDiagnosticsPlugin::default(),
+            FrameTimeDiagnosticsPlugin::default(),
+            CameraControllerPlugin,
+            MipmapGeneratorPlugin,
+            TemporalAntiAliasPlugin,
+        ))
         .add_systems(Startup, setup)
-        .add_systems(Update, (proc_scene, input));
+        .add_systems(
+            Update,
+            (generate_mipmaps::<StandardMaterial>, proc_scene, input),
+        );
 
     app.run();
 }
@@ -120,11 +127,9 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         })
         .insert(GrifLight);
 
-    let mut bloom_settings = BloomSettings::NATURAL;
-    bloom_settings.intensity *= 0.35;
     // Camera
-    commands
-        .spawn((Camera3dBundle {
+    commands.spawn((
+        Camera3dBundle {
             camera: Camera {
                 hdr: true,
                 ..default()
@@ -138,16 +143,14 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 aspect_ratio: 1.0,
             }),
             ..default()
-        },))
-        .insert((
-            CameraController::default().print_controls(),
-            bloom_settings,
-            Fxaa::default(),
-            //NormalPrepass,
-            //DepthPrepass,
-            //MotionVectorPrepass,
-            //DeferredPrepass,
-        ));
+        },
+        BloomSettings {
+            intensity: 0.05,
+            ..default()
+        },
+        CameraController::default().print_controls(),
+        TemporalAntiAliasBundle::default(),
+    ));
 }
 
 pub fn all_children<F: FnMut(Entity)>(

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { git = "https://github.com/bevyengine/bevy", rev = "4ce37395da029eb8b58c78c32812fe8329a3a1a4", features = ["ktx2", "zstd"] }
+bevy = { version = "0.11" }
 
 image = "0.24"
 anyhow = "1.0"
