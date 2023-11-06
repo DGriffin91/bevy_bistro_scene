@@ -1,10 +1,9 @@
-use std::{f32::consts::PI, num::NonZeroU8, time::Duration};
+use std::f32::consts::PI;
 
 mod camera_controller;
 mod mipmap_generator;
 
 use bevy::{
-    asset::ChangeWatcher,
     core_pipeline::{
         bloom::BloomSettings,
         experimental::taa::{TemporalAntiAliasBundle, TemporalAntiAliasPlugin},
@@ -40,24 +39,17 @@ pub fn main() {
             color: Color::rgb(1.0, 1.0, 1.0),
             brightness: 0.02,
         })
-        .add_plugins(
-            DefaultPlugins
-                .set(AssetPlugin {
-                    watch_for_changes: ChangeWatcher::with_delay(Duration::from_secs_f32(0.1)),
-                    ..default()
-                })
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        present_mode: PresentMode::Immediate,
-                        ..default()
-                    }),
-                    ..default()
-                }),
-        )
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                present_mode: PresentMode::Immediate,
+                ..default()
+            }),
+            ..default()
+        }))
         // Generating mipmaps takes a minute
         // Mipmap generation be skipped if ktx2 is used
         .insert_resource(MipmapGeneratorSettings {
-            anisotropic_filtering: NonZeroU8::new(16),
+            anisotropic_filtering: 16,
             ..default()
         })
         .add_plugins((

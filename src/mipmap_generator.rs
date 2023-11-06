@@ -1,13 +1,12 @@
 // Copied from https://github.com/DGriffin91/bevy_mod_mipmap_generator
 
 use anyhow::anyhow;
-use std::num::NonZeroU8;
 
 use bevy::{
     prelude::*,
     render::{
-        render_resource::{Extent3d, SamplerDescriptor, TextureDimension, TextureFormat},
-        texture::ImageSampler,
+        render_resource::{Extent3d, TextureDimension, TextureFormat},
+        texture::{ImageSampler, ImageSamplerDescriptor},
     },
     tasks::{AsyncComputeTaskPool, Task},
     utils::HashMap,
@@ -16,12 +15,12 @@ use futures_lite::future;
 use image::{imageops::FilterType, DynamicImage, ImageBuffer};
 
 #[derive(Resource, Deref)]
-pub struct DefaultSampler(SamplerDescriptor<'static>);
+pub struct DefaultSampler(ImageSamplerDescriptor);
 
 #[derive(Resource, Clone)]
 pub struct MipmapGeneratorSettings {
     /// Valid values: 1, 2, 4, 8, and 16.
-    pub anisotropic_filtering: Option<NonZeroU8>,
+    pub anisotropic_filtering: u16,
     pub filter_type: FilterType,
     pub minimum_mip_resolution: u32,
 }
@@ -34,9 +33,9 @@ impl Default for MipmapGeneratorSettings {
     fn default() -> Self {
         Self {
             // Default to 8x anisotropic filtering
-            anisotropic_filtering: NonZeroU8::new(8),
+            anisotropic_filtering: 8,
             filter_type: FilterType::Triangle,
-            minimum_mip_resolution: 2,
+            minimum_mip_resolution: 1,
         }
     }
 }
@@ -77,37 +76,34 @@ pub fn generate_mipmaps<M: Material + GetImages>(
     };
 
     let thread_pool = AsyncComputeTaskPool::get();
-    'outer: for event in material_events.iter() {
+    'outer: for event in material_events.read() {
         let material_h = match event {
-            AssetEvent::Created { handle } => handle,
+            AssetEvent::Added { id } => id,
+            AssetEvent::LoadedWithDependencies { id } => id,
             _ => continue,
         };
         for m in no_mipmap.iter() {
-            if m == material_h {
+            if m.id() == *material_h {
                 continue 'outer;
             }
         }
         // get_mut(material_h) here so we see the filtering right away
         // and even if mipmaps aren't made, we still get the filtering
-        if let Some(material) = materials.get_mut(material_h) {
-            for image_h in material.get_images().into_iter().flatten() {
+        if let Some(material) = materials.get_mut(*material_h) {
+            for image_h in material.get_images().into_iter() {
                 if tasks.contains_key(image_h) {
                     continue; //There is already a task for this image
                 }
                 if let Some(image) = images.get_mut(image_h) {
-                    let mut descriptor = match image.sampler_descriptor.clone() {
-                        ImageSampler::Default => (*default_sampler).clone(),
+                    let mut descriptor = match image.sampler.clone() {
+                        ImageSampler::Default => default_sampler.0.clone(),
                         ImageSampler::Descriptor(descriptor) => descriptor,
                     };
-                    descriptor.anisotropy_clamp = settings
-                        .anisotropic_filtering
-                        .unwrap_or(NonZeroU8::new(1).unwrap())
-                        .get() as u16;
-                    image.sampler_descriptor = ImageSampler::Descriptor(descriptor);
+                    descriptor.anisotropy_clamp = settings.anisotropic_filtering;
+                    image.sampler = ImageSampler::Descriptor(descriptor);
                     if image.texture_descriptor.mip_level_count == 1
                         && check_image_compatible(image).is_ok()
                     {
-                        dbg!("CONV");
                         let mut image = image.clone();
                         let settings = settings.clone();
                         let task = thread_pool.spawn(async move {
@@ -117,7 +113,7 @@ pub fn generate_mipmaps<M: Material + GetImages>(
                             }
                             image
                         });
-                        tasks.insert(image_h.clone(), (task, material_h.clone()));
+                        tasks.insert(image_h.clone(), (task, Handle::Weak(material_h.clone())));
                     }
                 }
             }
@@ -239,7 +235,7 @@ pub fn extract_mip_level(image: &Image, mip_level: u32) -> anyhow::Result<Image>
     Ok(Image {
         data: image.data[byte_offset..byte_offset + (width * block_size * height)].to_vec(),
         texture_descriptor: new_descriptor,
-        sampler_descriptor: image.sampler_descriptor.clone(),
+        sampler: image.sampler.clone(),
         texture_view_descriptor: image.texture_view_descriptor.clone(),
     })
 }
@@ -269,11 +265,11 @@ pub fn check_image_compatible(image: &Image) -> anyhow::Result<()> {
 
 // Implement the GetImages trait for any materials that need conversion
 pub trait GetImages {
-    fn get_images(&self) -> Vec<&Option<Handle<Image>>>;
+    fn get_images(&self) -> Vec<&Handle<Image>>;
 }
 
 impl GetImages for StandardMaterial {
-    fn get_images(&self) -> Vec<&Option<Handle<Image>>> {
+    fn get_images(&self) -> Vec<&Handle<Image>> {
         vec![
             &self.base_color_texture,
             &self.emissive_texture,
@@ -281,6 +277,9 @@ impl GetImages for StandardMaterial {
             &self.normal_map_texture,
             &self.occlusion_texture,
         ]
+        .into_iter()
+        .flatten()
+        .collect()
     }
 }
 
