@@ -68,15 +68,15 @@ impl Default for CameraController {
             enabled: true,
             initialized: false,
             sensitivity: 0.25,
-            key_forward: KeyCode::W,
-            key_back: KeyCode::S,
-            key_left: KeyCode::A,
-            key_right: KeyCode::D,
-            key_up: KeyCode::E,
-            key_down: KeyCode::Q,
+            key_forward: KeyCode::KeyW,
+            key_back: KeyCode::KeyS,
+            key_left: KeyCode::KeyA,
+            key_right: KeyCode::KeyD,
+            key_up: KeyCode::KeyE,
+            key_down: KeyCode::KeyQ,
             key_run: KeyCode::ShiftLeft,
             mouse_key_enable_mouse: MouseButton::Left,
-            keyboard_key_enable_mouse: KeyCode::M,
+            keyboard_key_enable_mouse: KeyCode::KeyM,
             walk_speed: 5.0,
             run_speed: 15.0,
             friction: 0.5,
@@ -94,9 +94,9 @@ impl Default for CameraController {
 pub fn camera_controller(
     time: Res<Time>,
     mut mouse_events: EventReader<MouseMotion>,
-    mouse_button_input: Res<Input<MouseButton>>,
+    mouse_button_input: Res<ButtonInput<MouseButton>>,
     mut scroll_evr: EventReader<MouseWheel>,
-    key_input: Res<Input<KeyCode>>,
+    key_input: Res<ButtonInput<KeyCode>>,
     mut move_toggled: Local<bool>,
     mut query: Query<(&mut Transform, &mut CameraController), With<Camera>>,
 ) {
@@ -166,15 +166,15 @@ pub fn camera_controller(
         }
         let forward = transform.forward();
         let right = transform.right();
-        let mut translation_delta = options.velocity.x * dt * right
+        let mut translation_delta = options.velocity.x * dt * *right
             + options.velocity.y * dt * Vec3::Y
-            + options.velocity.z * dt * forward;
+            + options.velocity.z * dt * *forward;
         let mut scroll_translation = Vec3::ZERO;
         if options.orbit_mode && options.scroll_wheel_speed > 0.0 {
             scroll_translation = scroll_distance
                 * transform.translation.distance(options.orbit_focus)
                 * options.scroll_wheel_speed
-                * forward;
+                * *forward;
         }
         if options.lock_y {
             translation_delta *= Vec3::new(1.0, 0.0, 1.0);

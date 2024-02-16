@@ -199,26 +199,29 @@ pub fn proc_scene(
     }
 }
 
-fn input(input: Res<Input<KeyCode>>, mut camera: Query<(Entity, &mut Transform), With<Camera>>) {
+fn input(
+    input: Res<ButtonInput<KeyCode>>,
+    mut camera: Query<(Entity, &mut Transform), With<Camera>>,
+) {
     for (_, mut transform) in camera.iter_mut() {
-        if input.just_pressed(KeyCode::I) {
+        if input.just_pressed(KeyCode::KeyI) {
             info!("{:?}", transform);
         }
-        if input.just_pressed(KeyCode::Key1) {
+        if input.just_pressed(KeyCode::Digit1) {
             *transform = Transform {
                 translation: Vec3::new(-10.5, 1.7, -1.0),
                 rotation: Quat::from_array([-0.05678932, 0.7372272, -0.062454797, -0.670351]),
                 scale: Vec3::new(1.0, 1.0, 1.0),
             }
         }
-        if input.just_pressed(KeyCode::Key2) {
+        if input.just_pressed(KeyCode::Digit2) {
             *transform = Transform {
                 translation: Vec3::new(24.149984, 1.9139149, -56.531208),
                 rotation: Quat::from_array([-0.0006097495, -0.9720757, 0.0025259522, -0.23465316]),
                 scale: Vec3::new(1.0, 1.0, 1.0),
             }
         }
-        if input.just_pressed(KeyCode::Key3) {
+        if input.just_pressed(KeyCode::Digit3) {
             *transform = Transform {
                 translation: Vec3::new(2.1902895, 3.7706258, -9.204603),
                 rotation: Quat::from_array([-0.04399063, -0.9307148, -0.119402625, 0.3428964]),
