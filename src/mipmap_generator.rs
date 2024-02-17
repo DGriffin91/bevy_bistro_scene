@@ -114,7 +114,7 @@ pub fn generate_mipmaps<M: Material + GetImages>(
                             }
                             image
                         });
-                        tasks.insert(image_h.clone(), (task, Handle::Weak(material_h.clone())));
+                        tasks.insert(image_h.clone(), (task, Handle::Weak(*material_h)));
                     }
                 }
             }

@@ -55,7 +55,7 @@ pub fn main() {
         })
         .add_plugins((
             LogDiagnosticsPlugin::default(),
-            FrameTimeDiagnosticsPlugin::default(),
+            FrameTimeDiagnosticsPlugin,
             CameraControllerPlugin,
             MipmapGeneratorPlugin,
             TemporalAntiAliasPlugin,
