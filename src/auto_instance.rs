@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use bevy::ecs::component::Component;
 use bevy::math::*;
 use bevy::prelude::*;
-use bevy::utils::HashMap;
+use bevy::utils::{HashMap, HashSet};
 
 pub struct AutoInstancePlugin;
 impl Plugin for AutoInstancePlugin {
@@ -83,18 +83,22 @@ pub fn consolidate_material_instances<M: Material + MaterialHash>(
     materials: ResMut<Assets<M>>,
     entities: Query<(Entity, &Handle<M>), With<AutoInstanceMaterial>>,
     mut instances: Local<HashMap<u64, Handle<M>>>,
+    mut handles: Local<HashSet<Handle<M>>>,
     mut count: Local<u32>,
 ) {
     let mut print = false;
     for (entity, mat_h) in &entities {
         if let Some(mat) = materials.get(mat_h) {
-            print = true;
-            let h = mat.generate_hash();
-            if let Some(instance_h) = instances.get(&h) {
-                commands.entity(entity).insert(instance_h.clone());
-                *count += 1;
-            } else {
-                instances.insert(h, mat_h.clone());
+            if !handles.contains(mat_h) {
+                print = true;
+                let h = mat.generate_hash();
+                if let Some(instance_h) = instances.get(&h) {
+                    commands.entity(entity).insert(instance_h.clone());
+                    *count += 1;
+                } else {
+                    instances.insert(h, mat_h.clone());
+                    handles.insert(mat_h.clone());
+                }
             }
             commands.entity(entity).remove::<AutoInstanceMaterial>();
         }
@@ -172,28 +176,31 @@ pub fn consolidate_mesh_instances(
     meshes: ResMut<Assets<Mesh>>,
     mut entities: Query<(Entity, &Handle<Mesh>), With<AutoInstanceMesh>>,
     mut instances: Local<HashMap<u64, Handle<Mesh>>>,
+    mut handles: Local<HashSet<Handle<Mesh>>>,
     mut count: Local<u32>,
 ) {
     let mut print = false;
     for (entity, mesh_h) in &mut entities {
         if let Some(mesh) = meshes.get(mesh_h) {
-            print = true;
-            let state = &mut DefaultHasher::new();
+            if !handles.contains(mesh_h) {
+                print = true;
+                let state = &mut DefaultHasher::new();
 
-            mesh.attributes().count().hash(state);
-            for (id, attribute) in mesh.attributes() {
-                id.hash(state);
-                attribute.get_bytes().hash(state);
+                mesh.attributes().count().hash(state);
+                for (id, attribute) in mesh.attributes() {
+                    id.hash(state);
+                    attribute.get_bytes().hash(state);
+                }
+                let h = state.finish();
+
+                if let Some(instance_h) = instances.get(&h) {
+                    commands.entity(entity).insert(instance_h.clone());
+                    *count += 1;
+                } else {
+                    instances.insert(h, mesh_h.clone());
+                    handles.insert(mesh_h.clone());
+                }
             }
-            let h = state.finish();
-
-            if let Some(instance_h) = instances.get(&h) {
-                commands.entity(entity).insert(instance_h.clone());
-                *count += 1;
-            } else {
-                instances.insert(h, mesh_h.clone());
-            }
-
             commands.entity(entity).remove::<AutoInstanceMesh>();
         }
     }
