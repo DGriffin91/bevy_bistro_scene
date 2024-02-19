@@ -1,8 +1,11 @@
 use std::f32::consts::PI;
 
+mod auto_instance;
 mod camera_controller;
 mod mipmap_generator;
 
+use argh::FromArgs;
+use auto_instance::{AutoInstanceMaterialPlugin, AutoInstancePlugin};
 use bevy::{
     core_pipeline::{
         bloom::BloomSettings,
@@ -16,20 +19,33 @@ use bevy::{
 use camera_controller::{CameraController, CameraControllerPlugin};
 use mipmap_generator::{generate_mipmaps, MipmapGeneratorPlugin, MipmapGeneratorSettings};
 
-use crate::convert::{change_gltf_to_use_ktx2, convert_images_to_ktx2};
 use crate::light_consts::lux;
+use crate::{
+    auto_instance::{AutoInstanceMaterialRecursive, AutoInstanceMeshRecursive},
+    convert::{change_gltf_to_use_ktx2, convert_images_to_ktx2},
+};
 
 mod convert;
 
+#[derive(FromArgs, Resource)]
+/// Config
+struct Args {
+    /// convert gltf to use ktx
+    #[argh(switch)]
+    convert: bool,
+
+    /// enable auto instancing for meshes/materials
+    #[argh(switch)]
+    instance: bool,
+}
+
 pub fn main() {
-    let args = &mut std::env::args();
-    args.next();
-    if let Some(arg) = &args.next() {
-        if arg == "--convert" {
-            println!("This will take a few minutes");
-            convert_images_to_ktx2();
-            change_gltf_to_use_ktx2();
-        }
+    let args: Args = argh::from_env();
+
+    if args.convert {
+        println!("This will take a few minutes");
+        convert_images_to_ktx2();
+        change_gltf_to_use_ktx2();
     }
 
     let mut app = App::new();
@@ -65,6 +81,12 @@ pub fn main() {
             Update,
             (generate_mipmaps::<StandardMaterial>, proc_scene, input),
         );
+    if args.instance {
+        app.add_plugins((
+            AutoInstancePlugin,
+            AutoInstanceMaterialPlugin::<StandardMaterial>::default(),
+        ));
+    }
 
     app.run();
 }
@@ -78,19 +100,25 @@ pub struct GrifLight;
 pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     println!("Loading models, generating mipmaps");
 
-    commands
-        .spawn(SceneBundle {
+    commands.spawn((
+        SceneBundle {
             scene: asset_server.load("bistro_exterior/BistroExterior.gltf#Scene0"),
             ..default()
-        })
-        .insert(PostProcScene);
+        },
+        PostProcScene,
+        AutoInstanceMaterialRecursive,
+        AutoInstanceMeshRecursive,
+    ));
 
-    commands
-        .spawn(SceneBundle {
+    commands.spawn((
+        SceneBundle {
             scene: asset_server.load("bistro_interior_wine/BistroInterior_Wine.gltf#Scene0"),
             ..default()
-        })
-        .insert(PostProcScene);
+        },
+        PostProcScene,
+        AutoInstanceMaterialRecursive,
+        AutoInstanceMeshRecursive,
+    ));
 
     // Sun
     commands
