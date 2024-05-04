@@ -145,6 +145,8 @@ impl MaterialHash for StandardMaterial {
             AlphaMode::Premultiplied => 297897363.hash(state),
             AlphaMode::Add => 36345667.hash(state),
             AlphaMode::Multiply => 48967896.hash(state),
+            #[cfg(feature = "bevy_main")]
+            AlphaMode::AlphaToCoverage => 20935847.hash(state),
         }
         self.depth_bias.to_bits().hash(state);
         self.depth_map.hash(state);
@@ -165,10 +167,21 @@ impl MaterialHash for StandardMaterial {
 }
 
 pub fn hash_color<H: Hasher>(color: &Color, state: &mut H) {
-    color.r().to_bits().hash(state);
-    color.g().to_bits().hash(state);
-    color.b().to_bits().hash(state);
-    color.a().to_bits().hash(state);
+    #[cfg(feature = "bevy_main")]
+    {
+        let color = color.linear();
+        color.red.to_bits().hash(state);
+        color.green.to_bits().hash(state);
+        color.blue.to_bits().hash(state);
+        color.alpha().to_bits().hash(state);
+    }
+    #[cfg(not(feature = "bevy_main"))]
+    {
+        color.r().to_bits().hash(state);
+        color.g().to_bits().hash(state);
+        color.b().to_bits().hash(state);
+        color.a().to_bits().hash(state);
+    }
 }
 
 pub fn consolidate_mesh_instances(

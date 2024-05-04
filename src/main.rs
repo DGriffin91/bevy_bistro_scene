@@ -1,4 +1,7 @@
-use std::f32::consts::PI;
+// Press B for benchmark.
+// Preferably after frame time is reading consistently, rust-analyzer has calmed down, and with locked gpu clocks.
+
+use std::{f32::consts::PI, time::Instant};
 
 mod auto_instance;
 mod camera_controller;
@@ -14,6 +17,7 @@ use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     pbr::{CascadeShadowConfigBuilder, ScreenSpaceAmbientOcclusionBundle},
     prelude::*,
+    render::view::NoFrustumCulling,
     window::{PresentMode, WindowResolution},
     winit::{UpdateMode, WinitSettings},
 };
@@ -28,9 +32,9 @@ use crate::{
 
 mod convert;
 
-#[derive(FromArgs, Resource)]
+#[derive(FromArgs, Resource, Clone)]
 /// Config
-struct Args {
+pub struct Args {
     /// convert gltf to use ktx
     #[argh(switch)]
     convert: bool,
@@ -38,6 +42,14 @@ struct Args {
     /// enable auto instancing for meshes/materials
     #[argh(switch)]
     instance: bool,
+
+    /// disable bloom, AO, AA, shadows
+    #[argh(switch)]
+    minimal: bool,
+
+    /// whether to disable frustum culling.
+    #[argh(switch)]
+    no_frustum_culling: bool,
 }
 
 pub fn main() {
@@ -51,7 +63,8 @@ pub fn main() {
 
     let mut app = App::new();
 
-    app.insert_resource(Msaa::Off)
+    app.insert_resource(args.clone())
+        .insert_resource(Msaa::Off)
         .insert_resource(ClearColor(Color::rgb(1.75, 1.9, 1.99)))
         .insert_resource(AmbientLight {
             color: Color::rgb(1.0, 1.0, 1.0),
@@ -85,8 +98,16 @@ pub fn main() {
         .add_systems(Startup, setup)
         .add_systems(
             Update,
-            (generate_mipmaps::<StandardMaterial>, proc_scene, input),
+            (
+                generate_mipmaps::<StandardMaterial>,
+                proc_scene,
+                input,
+                benchmark,
+            ),
         );
+    if args.no_frustum_culling {
+        app.add_systems(Update, add_no_frustum_culling);
+    }
     if args.instance {
         app.add_plugins((
             AutoInstancePlugin,
@@ -103,7 +124,7 @@ pub struct PostProcScene;
 #[derive(Component)]
 pub struct GrifLight;
 
-pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<Args>) {
     println!("Loading models, generating mipmaps");
 
     commands.spawn((
@@ -138,7 +159,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             directional_light: DirectionalLight {
                 color: Color::rgb(1.0, 0.98, 0.96),
                 illuminance: lux::FULL_DAYLIGHT,
-                shadows_enabled: true,
+                shadows_enabled: !args.minimal,
                 shadow_depth_bias: 0.2,
                 shadow_normal_bias: 0.2,
             },
@@ -155,23 +176,26 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         .insert(GrifLight);
 
     // Camera
-    commands
-        .spawn((
-            Camera3dBundle {
-                camera: Camera {
-                    hdr: true,
-                    ..default()
-                },
-                transform: Transform::from_xyz(-10.5, 1.7, -1.0)
-                    .looking_at(Vec3::new(0.0, 3.5, 0.0), Vec3::Y),
-                projection: Projection::Perspective(PerspectiveProjection {
-                    fov: std::f32::consts::PI / 3.0,
-                    near: 0.1,
-                    far: 1000.0,
-                    aspect_ratio: 1.0,
-                }),
+    let mut cam = commands.spawn((
+        Camera3dBundle {
+            camera: Camera {
+                hdr: true,
                 ..default()
             },
+            transform: Transform::from_xyz(-10.5, 1.7, -1.0)
+                .looking_at(Vec3::new(0.0, 3.5, 0.0), Vec3::Y),
+            projection: Projection::Perspective(PerspectiveProjection {
+                fov: std::f32::consts::PI / 3.0,
+                near: 0.1,
+                far: 1000.0,
+                aspect_ratio: 1.0,
+            }),
+            ..default()
+        },
+        CameraController::default().print_controls(),
+    ));
+    if !args.minimal {
+        cam.insert((
             BloomSettings {
                 intensity: 0.05,
                 ..default()
@@ -181,10 +205,10 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 specular_map: asset_server.load("environment_maps/pisa_specular_rgb9e5_zstd.ktx2"),
                 intensity: 250.0,
             },
-            CameraController::default().print_controls(),
             TemporalAntiAliasBundle::default(),
         ))
         .insert(ScreenSpaceAmbientOcclusionBundle::default());
+    }
 }
 
 pub fn all_children<F: FnMut(Entity)>(
@@ -241,34 +265,83 @@ pub fn proc_scene(
     }
 }
 
-fn input(
+const CAM_POS_1: Transform = Transform {
+    translation: Vec3::new(-10.5, 1.7, -1.0),
+    rotation: Quat::from_array([-0.05678932, 0.7372272, -0.062454797, -0.670351]),
+    scale: Vec3::new(1.0, 1.0, 1.0),
+};
+
+const CAM_POS_2: Transform = Transform {
+    translation: Vec3::new(24.149984, 1.9139149, -56.531208),
+    rotation: Quat::from_array([-0.0006097495, -0.9720757, 0.0025259522, -0.23465316]),
+    scale: Vec3::new(1.0, 1.0, 1.0),
+};
+
+const CAM_POS_3: Transform = Transform {
+    translation: Vec3::new(2.1902895, 3.7706258, -9.204603),
+    rotation: Quat::from_array([-0.04399063, -0.9307148, -0.119402625, 0.3428964]),
+    scale: Vec3::new(1.0, 1.0, 1.0),
+};
+
+fn input(input: Res<ButtonInput<KeyCode>>, mut camera: Query<&mut Transform, With<Camera>>) {
+    let Ok(mut transform) = camera.get_single_mut() else {
+        return;
+    };
+    if input.just_pressed(KeyCode::KeyI) {
+        info!("{:?}", transform);
+    }
+    if input.just_pressed(KeyCode::Digit1) {
+        *transform = CAM_POS_1
+    }
+    if input.just_pressed(KeyCode::Digit2) {
+        *transform = CAM_POS_2
+    }
+    if input.just_pressed(KeyCode::Digit3) {
+        *transform = CAM_POS_3
+    }
+}
+
+fn benchmark(
     input: Res<ButtonInput<KeyCode>>,
-    mut camera: Query<(Entity, &mut Transform), With<Camera>>,
+    mut camera: Query<&mut Transform, With<Camera>>,
+    mut bench_started: Local<Option<Instant>>,
+    mut bench_frame: Local<u32>,
 ) {
-    for (_, mut transform) in camera.iter_mut() {
-        if input.just_pressed(KeyCode::KeyI) {
-            info!("{:?}", transform);
+    if input.just_pressed(KeyCode::KeyB) && bench_started.is_none() {
+        *bench_started = Some(Instant::now());
+        *bench_frame = 0;
+        println!("Starting Benchmark");
+    }
+    if bench_started.is_none() {
+        return;
+    }
+    let Ok(mut transform) = camera.get_single_mut() else {
+        return;
+    };
+    match *bench_frame {
+        0 => *transform = CAM_POS_1,
+        500 => *transform = CAM_POS_2,
+        1000 => *transform = CAM_POS_3,
+        1500 => {
+            let elapsed = bench_started.unwrap().elapsed().as_secs_f32();
+            println!(
+                "Benchmark avg cpu frame time: {:.2}ms",
+                (elapsed / *bench_frame as f32) * 1000.0
+            );
+            *bench_started = None;
+            *bench_frame = 0;
+            *transform = CAM_POS_1;
         }
-        if input.just_pressed(KeyCode::Digit1) {
-            *transform = Transform {
-                translation: Vec3::new(-10.5, 1.7, -1.0),
-                rotation: Quat::from_array([-0.05678932, 0.7372272, -0.062454797, -0.670351]),
-                scale: Vec3::new(1.0, 1.0, 1.0),
-            }
-        }
-        if input.just_pressed(KeyCode::Digit2) {
-            *transform = Transform {
-                translation: Vec3::new(24.149984, 1.9139149, -56.531208),
-                rotation: Quat::from_array([-0.0006097495, -0.9720757, 0.0025259522, -0.23465316]),
-                scale: Vec3::new(1.0, 1.0, 1.0),
-            }
-        }
-        if input.just_pressed(KeyCode::Digit3) {
-            *transform = Transform {
-                translation: Vec3::new(2.1902895, 3.7706258, -9.204603),
-                rotation: Quat::from_array([-0.04399063, -0.9307148, -0.119402625, 0.3428964]),
-                scale: Vec3::new(1.0, 1.0, 1.0),
-            };
-        }
+        _ => (),
+    }
+    *bench_frame += 1;
+}
+
+pub fn add_no_frustum_culling(
+    mut commands: Commands,
+    convert_query: Query<Entity, (Without<NoFrustumCulling>, With<Handle<StandardMaterial>>)>,
+) {
+    for entity in convert_query.iter() {
+        commands.entity(entity).insert(NoFrustumCulling);
     }
 }
