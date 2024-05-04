@@ -14,7 +14,8 @@ use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     pbr::{CascadeShadowConfigBuilder, ScreenSpaceAmbientOcclusionBundle},
     prelude::*,
-    window::PresentMode,
+    window::{PresentMode, WindowResolution},
+    winit::{UpdateMode, WinitSettings},
 };
 use camera_controller::{CameraController, CameraControllerPlugin};
 use mipmap_generator::{generate_mipmaps, MipmapGeneratorPlugin, MipmapGeneratorSettings};
@@ -56,9 +57,14 @@ pub fn main() {
             color: Color::rgb(1.0, 1.0, 1.0),
             brightness: 0.02,
         })
+        .insert_resource(WinitSettings {
+            focused_mode: UpdateMode::Continuous,
+            unfocused_mode: UpdateMode::Continuous,
+        })
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 present_mode: PresentMode::Immediate,
+                resolution: WindowResolution::new(1920.0, 1080.0).with_scale_factor_override(1.0),
                 ..default()
             }),
             ..default()
@@ -201,7 +207,7 @@ pub fn proc_scene(
     children_query: Query<&Children>,
     has_std_mat: Query<&Handle<StandardMaterial>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    _lights: Query<
+    lights: Query<
         Entity,
         (
             Or<(With<PointLight>, With<DirectionalLight>, With<SpotLight>)>,
@@ -220,12 +226,12 @@ pub fn proc_scene(
                     }
                 }
 
-                // Sponza has a bunch of lights by default
-                //if lights.get(entity).is_ok() {
-                //    commands.entity(entity).despawn_recursive();
-                //}
+                // Has a bunch of lights by default
+                if lights.get(entity).is_ok() {
+                    commands.entity(entity).despawn_recursive();
+                }
 
-                // Sponza has a bunch of cameras by default
+                // Has a bunch of cameras by default
                 if cameras.get(entity).is_ok() {
                     commands.entity(entity).despawn_recursive();
                 }
