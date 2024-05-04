@@ -268,19 +268,19 @@ pub fn proc_scene(
 const CAM_POS_1: Transform = Transform {
     translation: Vec3::new(-10.5, 1.7, -1.0),
     rotation: Quat::from_array([-0.05678932, 0.7372272, -0.062454797, -0.670351]),
-    scale: Vec3::new(1.0, 1.0, 1.0),
+    scale: Vec3::ONE,
 };
 
 const CAM_POS_2: Transform = Transform {
     translation: Vec3::new(24.149984, 1.9139149, -56.531208),
     rotation: Quat::from_array([-0.0006097495, -0.9720757, 0.0025259522, -0.23465316]),
-    scale: Vec3::new(1.0, 1.0, 1.0),
+    scale: Vec3::ONE,
 };
 
 const CAM_POS_3: Transform = Transform {
     translation: Vec3::new(2.1902895, 3.7706258, -9.204603),
     rotation: Quat::from_array([-0.04399063, -0.9307148, -0.119402625, 0.3428964]),
-    scale: Vec3::new(1.0, 1.0, 1.0),
+    scale: Vec3::ONE,
 };
 
 fn input(input: Res<ButtonInput<KeyCode>>, mut camera: Query<&mut Transform, With<Camera>>) {
@@ -306,11 +306,18 @@ fn benchmark(
     mut camera: Query<&mut Transform, With<Camera>>,
     mut bench_started: Local<Option<Instant>>,
     mut bench_frame: Local<u32>,
+    mut count_per_step: Local<u32>,
+    time: Res<Time>,
 ) {
     if input.just_pressed(KeyCode::KeyB) && bench_started.is_none() {
         *bench_started = Some(Instant::now());
         *bench_frame = 0;
-        println!("Starting Benchmark");
+        // Try to render for around 2s or at least 30 frames per step
+        *count_per_step = ((2.0 / time.delta_seconds()) as u32).max(30);
+        println!(
+            "Starting Benchmark with {} frames per step",
+            *count_per_step
+        );
     }
     if bench_started.is_none() {
         return;
@@ -318,21 +325,21 @@ fn benchmark(
     let Ok(mut transform) = camera.get_single_mut() else {
         return;
     };
-    match *bench_frame {
-        0 => *transform = CAM_POS_1,
-        500 => *transform = CAM_POS_2,
-        1000 => *transform = CAM_POS_3,
-        1500 => {
-            let elapsed = bench_started.unwrap().elapsed().as_secs_f32();
-            println!(
-                "Benchmark avg cpu frame time: {:.2}ms",
-                (elapsed / *bench_frame as f32) * 1000.0
-            );
-            *bench_started = None;
-            *bench_frame = 0;
-            *transform = CAM_POS_1;
-        }
-        _ => (),
+    if *bench_frame == 0 {
+        *transform = CAM_POS_1
+    } else if *bench_frame == *count_per_step {
+        *transform = CAM_POS_2
+    } else if *bench_frame == *count_per_step * 2 {
+        *transform = CAM_POS_3
+    } else if *bench_frame == *count_per_step * 3 {
+        let elapsed = bench_started.unwrap().elapsed().as_secs_f32();
+        println!(
+            "Benchmark avg cpu frame time: {:.2}ms",
+            (elapsed / *bench_frame as f32) * 1000.0
+        );
+        *bench_started = None;
+        *bench_frame = 0;
+        *transform = CAM_POS_1;
     }
     *bench_frame += 1;
 }
