@@ -1,7 +1,11 @@
 // Press B for benchmark.
 // Preferably after frame time is reading consistently, rust-analyzer has calmed down, and with locked gpu clocks.
 
-use std::{f32::consts::PI, time::Instant};
+use std::{
+    f32::consts::PI,
+    ops::{Add, Mul, Sub},
+    time::Instant,
+};
 
 mod auto_instance;
 mod camera_controller;
@@ -103,6 +107,7 @@ pub fn main() {
                 proc_scene,
                 input,
                 benchmark,
+                run_animation,
             ),
         );
     if args.no_frustum_culling {
@@ -283,6 +288,26 @@ const CAM_POS_3: Transform = Transform {
     scale: Vec3::ONE,
 };
 
+const ANIM_SPEED: f32 = 0.2;
+
+const ANIM_CAM: [Transform; 3] = [
+    Transform {
+        translation: Vec3::new(-6.414026, 8.179898, -23.550516),
+        rotation: Quat::from_array([-0.016413536, -0.88136566, -0.030704278, 0.4711502]),
+        scale: Vec3::ONE,
+    },
+    Transform {
+        translation: Vec3::new(-14.752817, 6.279289, 5.691277),
+        rotation: Quat::from_array([-0.031593435, -0.516736, -0.019086324, 0.8553488]),
+        scale: Vec3::ONE,
+    },
+    Transform {
+        translation: Vec3::new(5.1539426, 8.142523, 16.436222),
+        rotation: Quat::from_array([-0.07907656, -0.07581916, -0.006031934, 0.99396276]),
+        scale: Vec3::ONE,
+    },
+];
+
 fn input(input: Res<ButtonInput<KeyCode>>, mut camera: Query<&mut Transform, With<Camera>>) {
     let Ok(mut transform) = camera.get_single_mut() else {
         return;
@@ -299,6 +324,51 @@ fn input(input: Res<ButtonInput<KeyCode>>, mut camera: Query<&mut Transform, Wit
     if input.just_pressed(KeyCode::Digit3) {
         *transform = CAM_POS_3
     }
+}
+
+fn lerp<T>(a: T, b: T, t: f32) -> T
+where
+    T: Copy + Add<Output = T> + Sub<Output = T> + Mul<f32, Output = T>,
+{
+    a + (b - a) * t
+}
+
+fn follow_path(points: &[Transform], progress: f32) -> Transform {
+    let total_segments = (points.len() - 1) as f32;
+    let progress = progress.clamp(0.0, 1.0);
+    let mut segment_progress = progress * total_segments;
+    let segment_index = segment_progress.floor() as usize;
+    segment_progress -= segment_index as f32;
+    let a = points[segment_index];
+    let b = points[(segment_index + 1).min(points.len() - 1)];
+    Transform {
+        translation: lerp(a.translation, b.translation, segment_progress),
+        rotation: lerp(a.rotation, b.rotation, segment_progress),
+        scale: lerp(a.scale, b.scale, segment_progress),
+    }
+}
+
+fn run_animation(
+    time: Res<Time>,
+    input: Res<ButtonInput<KeyCode>>,
+    mut animation_active: Local<bool>,
+    mut camera: Query<&mut Transform, With<Camera>>,
+) {
+    let Ok(mut cam_tr) = camera.get_single_mut() else {
+        return;
+    };
+    if input.just_pressed(KeyCode::Space) {
+        *animation_active = !*animation_active;
+    }
+    if !*animation_active {
+        return;
+    }
+    let progress = (time.elapsed_seconds() * ANIM_SPEED).fract();
+    let cycle = 1.0 - (progress * 2.0 - 1.0).abs();
+    let path_state = follow_path(&ANIM_CAM, cycle);
+    // LPF
+    cam_tr.translation = lerp(cam_tr.translation, path_state.translation, 0.1);
+    cam_tr.rotation = lerp(cam_tr.rotation, path_state.rotation, 0.1);
 }
 
 fn benchmark(
