@@ -7,19 +7,20 @@ use std::{
     time::Instant,
 };
 
-mod auto_instance;
 mod camera_controller;
 mod mipmap_generator;
 
 use argh::FromArgs;
-use auto_instance::{AutoInstanceMaterialPlugin, AutoInstancePlugin};
 use bevy::{
     core_pipeline::{
         bloom::BloomSettings,
+        core_3d::ScreenSpaceTransmissionQuality,
         experimental::taa::{TemporalAntiAliasBundle, TemporalAntiAliasPlugin},
     },
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
-    pbr::{CascadeShadowConfigBuilder, ScreenSpaceAmbientOcclusionBundle},
+    pbr::{
+        CascadeShadowConfigBuilder, ScreenSpaceAmbientOcclusionBundle, TransmittedShadowReceiver,
+    },
     prelude::*,
     render::view::NoFrustumCulling,
     window::{PresentMode, WindowResolution},
@@ -28,11 +29,8 @@ use bevy::{
 use camera_controller::{CameraController, CameraControllerPlugin};
 use mipmap_generator::{generate_mipmaps, MipmapGeneratorPlugin, MipmapGeneratorSettings};
 
+use crate::convert::{change_gltf_to_use_ktx2, convert_images_to_ktx2};
 use crate::light_consts::lux;
-use crate::{
-    auto_instance::{AutoInstanceMaterialRecursive, AutoInstanceMeshRecursive},
-    convert::{change_gltf_to_use_ktx2, convert_images_to_ktx2},
-};
 
 mod convert;
 
@@ -43,9 +41,9 @@ pub struct Args {
     #[argh(switch)]
     convert: bool,
 
-    /// enable auto instancing for meshes/materials
+    /// disable glTF lights
     #[argh(switch)]
-    instance: bool,
+    no_gltf_lights: bool,
 
     /// disable bloom, AO, AA, shadows
     #[argh(switch)]
@@ -113,12 +111,6 @@ pub fn main() {
     if args.no_frustum_culling {
         app.add_systems(Update, add_no_frustum_culling);
     }
-    if args.instance {
-        app.add_plugins((
-            AutoInstancePlugin,
-            AutoInstanceMaterialPlugin::<StandardMaterial>::default(),
-        ));
-    }
 
     app.run();
 }
@@ -138,31 +130,36 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
             ..default()
         },
         PostProcScene,
-        AutoInstanceMaterialRecursive,
-        AutoInstanceMeshRecursive,
     ));
 
     commands.spawn((
         SceneBundle {
             scene: asset_server.load("bistro_interior_wine/BistroInterior_Wine.gltf#Scene0"),
+            transform: Transform::from_xyz(0.0, 0.3, -0.2),
             ..default()
         },
         PostProcScene,
-        AutoInstanceMaterialRecursive,
-        AutoInstanceMeshRecursive,
     ));
+
+    if !args.no_gltf_lights {
+        // In Repo glTF
+        commands.spawn(SceneBundle {
+            scene: asset_server.load("BistroExteriorFakeGI.gltf#Scene0"),
+            ..default()
+        });
+    }
 
     // Sun
     commands
         .spawn(DirectionalLightBundle {
             transform: Transform::from_rotation(Quat::from_euler(
                 EulerRot::XYZ,
-                PI * -0.43,
-                PI * -0.08,
+                PI * -0.35,
+                PI * -0.13,
                 0.0,
             )),
             directional_light: DirectionalLight {
-                color: Color::rgb(1.0, 0.98, 0.96),
+                color: Color::rgb(1.0, 0.87, 0.78),
                 illuminance: lux::FULL_DAYLIGHT,
                 shadows_enabled: !args.minimal,
                 shadow_depth_bias: 0.2,
@@ -183,6 +180,11 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
     // Camera
     let mut cam = commands.spawn((
         Camera3dBundle {
+            camera_3d: Camera3d {
+                screen_space_specular_transmission_steps: 0,
+                screen_space_specular_transmission_quality: ScreenSpaceTransmissionQuality::Low,
+                ..default()
+            },
             camera: Camera {
                 hdr: true,
                 ..default()
@@ -198,16 +200,17 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
             ..default()
         },
         EnvironmentMapLight {
-            diffuse_map: asset_server.load("environment_maps/pisa_diffuse_rgb9e5_zstd.ktx2"),
-            specular_map: asset_server.load("environment_maps/pisa_specular_rgb9e5_zstd.ktx2"),
-            intensity: 250.0,
+            diffuse_map: asset_server.load("environment_maps/san_giuseppe_bridge_4k_diffuse.ktx2"),
+            specular_map: asset_server
+                .load("environment_maps/san_giuseppe_bridge_4k_specular.ktx2"),
+            intensity: 600.0,
         },
         CameraController::default().print_controls(),
     ));
     if !args.minimal {
         cam.insert((
             BloomSettings {
-                intensity: 0.05,
+                intensity: 0.02,
                 ..default()
             },
             TemporalAntiAliasBundle::default(),
@@ -244,6 +247,7 @@ pub fn proc_scene(
         ),
     >,
     cameras: Query<Entity, With<Camera>>,
+    args: Res<Args>,
 ) {
     for entity in flip_normals_query.iter() {
         if let Ok(children) = children_query.get(entity) {
@@ -252,12 +256,24 @@ pub fn proc_scene(
                 if let Ok(mat_h) = has_std_mat.get(entity) {
                     if let Some(mat) = materials.get_mut(mat_h) {
                         mat.flip_normal_map_y = true;
+                        match mat.alpha_mode {
+                            AlphaMode::Mask(_) => {
+                                mat.diffuse_transmission = 0.6;
+                                mat.double_sided = true;
+                                mat.cull_mode = None;
+                                mat.thickness = 0.2;
+                                commands.entity(entity).insert(TransmittedShadowReceiver);
+                            }
+                            _ => (),
+                        }
                     }
                 }
 
-                // Has a bunch of lights by default
-                if lights.get(entity).is_ok() {
-                    commands.entity(entity).despawn_recursive();
+                if args.no_gltf_lights {
+                    // Has a bunch of lights by default
+                    if lights.get(entity).is_ok() {
+                        commands.entity(entity).despawn_recursive();
+                    }
                 }
 
                 // Has a bunch of cameras by default
@@ -277,14 +293,14 @@ const CAM_POS_1: Transform = Transform {
 };
 
 const CAM_POS_2: Transform = Transform {
-    translation: Vec3::new(24.149984, 1.9139149, -56.531208),
-    rotation: Quat::from_array([-0.0006097495, -0.9720757, 0.0025259522, -0.23465316]),
+    translation: Vec3::new(56.23809, 2.9985719, 28.96291),
+    rotation: Quat::from_array([0.0020175162, 0.35272083, -0.0007605003, 0.93572617]),
     scale: Vec3::ONE,
 };
 
 const CAM_POS_3: Transform = Transform {
-    translation: Vec3::new(2.1902895, 3.7706258, -9.204603),
-    rotation: Quat::from_array([-0.04399063, -0.9307148, -0.119402625, 0.3428964]),
+    translation: Vec3::new(5.7861176, 3.3475509, -8.821455),
+    rotation: Quat::from_array([-0.0049382094, -0.98193514, -0.025878597, 0.18737496]),
     scale: Vec3::ONE,
 };
 
@@ -374,6 +390,10 @@ fn run_animation(
 fn benchmark(
     input: Res<ButtonInput<KeyCode>>,
     mut camera: Query<&mut Transform, With<Camera>>,
+    materials: Res<Assets<StandardMaterial>>,
+    meshes: Res<Assets<Mesh>>,
+    has_std_mat: Query<&Handle<StandardMaterial>>,
+    has_mesh: Query<&Handle<Mesh>>,
     mut bench_started: Local<Option<Instant>>,
     mut bench_frame: Local<u32>,
     mut count_per_step: Local<u32>,
@@ -406,6 +426,13 @@ fn benchmark(
         println!(
             "Benchmark avg cpu frame time: {:.2}ms",
             (elapsed / *bench_frame as f32) * 1000.0
+        );
+        println!(
+            "Meshes: {}\nMesh Instances: {}\nMaterials: {}\nMaterial Instances: {}",
+            meshes.len(),
+            has_mesh.iter().len(),
+            materials.len(),
+            has_std_mat.iter().len(),
         );
         *bench_started = None;
         *bench_frame = 0;
