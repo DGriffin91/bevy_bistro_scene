@@ -4,9 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { version = "0.13" }
-#bevy = { git = "https://github.com/bevyengine/bevy", rev = "ec418aa429142972032f56a43ab963bd3be766d4" }
-#bevy = { git = "https://github.com/pcwalton/bevy", branch = "uberbuffers" }
+bevy = { version = "0.14.0" }
 
 image = "0.24"
 anyhow = "1.0"
@@ -19,7 +17,3 @@ opt-level = 3
 
 [profile.dev]
 opt-level = 3
-
-[features]
-#default = ["bevy_main"]
-bevy_main = [] #Note: you need to manually change the bevy dependency
