@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { version = "0.14.0" }
+bevy = { version = "0.14" }
+#bevy = { version = "0.13" }
 
 image = "0.24"
 anyhow = "1.0"

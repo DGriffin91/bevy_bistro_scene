@@ -22,7 +22,7 @@ use bevy::{
         CascadeShadowConfigBuilder, ScreenSpaceAmbientOcclusionBundle, TransmittedShadowReceiver,
     },
     prelude::*,
-    render::view::NoFrustumCulling,
+    render::{render_resource::Face, view::NoFrustumCulling},
     window::{PresentMode, WindowResolution},
     winit::{UpdateMode, WinitSettings},
 };
@@ -67,9 +67,11 @@ pub fn main() {
 
     app.insert_resource(args.clone())
         .insert_resource(Msaa::Off)
-        .insert_resource(ClearColor(Color::srgb(1.75, 1.9, 1.99)))
+        // Using just rgb here for bevy 0.13 compat
+        .insert_resource(ClearColor(Color::rgb(1.75, 1.9, 1.99)))
         .insert_resource(AmbientLight {
-            color: Color::srgb(1.0, 1.0, 1.0),
+            // Using just rgb here for bevy 0.13 compat
+            color: Color::rgb(1.0, 1.0, 1.0),
             brightness: 0.02,
         })
         .insert_resource(WinitSettings {
@@ -159,7 +161,8 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
                 0.0,
             )),
             directional_light: DirectionalLight {
-                color: Color::srgb(1.0, 0.87, 0.78),
+                // Using just rgb here for bevy 0.13 compat
+                color: Color::rgb(1.0, 0.87, 0.78),
                 illuminance: lux::FULL_DAYLIGHT,
                 shadows_enabled: !args.minimal,
                 shadow_depth_bias: 0.2,
@@ -263,6 +266,10 @@ pub fn proc_scene(
                                 mat.cull_mode = None;
                                 mat.thickness = 0.2;
                                 commands.entity(entity).insert(TransmittedShadowReceiver);
+                            }
+                            AlphaMode::Opaque => {
+                                mat.double_sided = false;
+                                mat.cull_mode = Some(Face::Back);
                             }
                             _ => (),
                         }
