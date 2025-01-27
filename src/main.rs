@@ -11,16 +11,15 @@ mod camera_controller;
 mod mipmap_generator;
 
 use argh::FromArgs;
+use bevy::core_pipeline::bloom::Bloom;
+use bevy::core_pipeline::experimental::taa::TemporalAntiAliasing;
+use bevy::pbr::ScreenSpaceAmbientOcclusion;
 use bevy::{
     core_pipeline::{
-        bloom::BloomSettings,
-        core_3d::ScreenSpaceTransmissionQuality,
-        experimental::taa::{TemporalAntiAliasBundle, TemporalAntiAliasPlugin},
+        core_3d::ScreenSpaceTransmissionQuality, experimental::taa::TemporalAntiAliasPlugin,
     },
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
-    pbr::{
-        CascadeShadowConfigBuilder, ScreenSpaceAmbientOcclusionBundle, TransmittedShadowReceiver,
-    },
+    pbr::{CascadeShadowConfigBuilder, TransmittedShadowReceiver},
     prelude::*,
     render::{render_resource::Face, view::NoFrustumCulling},
     window::{PresentMode, WindowResolution},
@@ -66,13 +65,13 @@ pub fn main() {
     let mut app = App::new();
 
     app.insert_resource(args.clone())
-        .insert_resource(Msaa::Off)
         // Using just rgb here for bevy 0.13 compat
-        .insert_resource(ClearColor(Color::rgb(1.75, 1.9, 1.99)))
+        .insert_resource(ClearColor(Color::srgb(1.75, 1.9, 1.99)))
         .insert_resource(AmbientLight {
             // Using just rgb here for bevy 0.13 compat
-            color: Color::rgb(1.0, 1.0, 1.0),
+            color: Color::srgb(1.0, 1.0, 1.0),
             brightness: 0.02,
+            affects_lightmapped_meshes: false,
         })
         .insert_resource(WinitSettings {
             focused_mode: UpdateMode::Continuous,
@@ -94,7 +93,7 @@ pub fn main() {
         })
         .add_plugins((
             LogDiagnosticsPlugin::default(),
-            FrameTimeDiagnosticsPlugin,
+            FrameTimeDiagnosticsPlugin::default(),
             CameraControllerPlugin,
             MipmapGeneratorPlugin,
             TemporalAntiAliasPlugin,
@@ -127,98 +126,84 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
     println!("Loading models, generating mipmaps");
 
     commands.spawn((
-        SceneBundle {
-            scene: asset_server.load("bistro_exterior/BistroExterior.gltf#Scene0"),
-            ..default()
-        },
+        SceneRoot(asset_server.load("bistro_exterior/BistroExterior.gltf#Scene0")),
         PostProcScene,
     ));
 
     commands.spawn((
-        SceneBundle {
-            scene: asset_server.load("bistro_interior_wine/BistroInterior_Wine.gltf#Scene0"),
-            transform: Transform::from_xyz(0.0, 0.3, -0.2),
-            ..default()
-        },
+        SceneRoot(asset_server.load("bistro_interior_wine/BistroInterior_Wine.gltf#Scene0")),
+        Transform::from_xyz(0.0, 0.3, -0.2),
         PostProcScene,
     ));
 
     if !args.no_gltf_lights {
         // In Repo glTF
-        commands.spawn(SceneBundle {
-            scene: asset_server.load("BistroExteriorFakeGI.gltf#Scene0"),
-            ..default()
-        });
+        commands.spawn(SceneRoot(
+            asset_server.load("BistroExteriorFakeGI.gltf#Scene0"),
+        ));
     }
 
     // Sun
     commands
-        .spawn(DirectionalLightBundle {
-            transform: Transform::from_rotation(Quat::from_euler(
-                EulerRot::XYZ,
-                PI * -0.35,
-                PI * -0.13,
-                0.0,
-            )),
-            directional_light: DirectionalLight {
+        .spawn((
+            Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, PI * -0.35, PI * -0.13, 0.0)),
+            DirectionalLight {
                 // Using just rgb here for bevy 0.13 compat
-                color: Color::rgb(1.0, 0.87, 0.78),
+                color: Color::srgb(1.0, 0.87, 0.78),
                 illuminance: lux::FULL_DAYLIGHT,
                 shadows_enabled: !args.minimal,
                 shadow_depth_bias: 0.2,
                 shadow_normal_bias: 0.2,
+                ..default()
             },
-            cascade_shadow_config: CascadeShadowConfigBuilder {
+            CascadeShadowConfigBuilder {
                 num_cascades: 4,
                 minimum_distance: 0.1,
                 maximum_distance: 100.0,
                 first_cascade_far_bound: 5.0,
                 overlap_proportion: 0.2,
             }
-            .into(),
-            ..default()
-        })
+            .build(),
+        ))
         .insert(GrifLight);
 
     // Camera
     let mut cam = commands.spawn((
-        Camera3dBundle {
-            camera_3d: Camera3d {
-                screen_space_specular_transmission_steps: 0,
-                screen_space_specular_transmission_quality: ScreenSpaceTransmissionQuality::Low,
-                ..default()
-            },
-            camera: Camera {
-                hdr: true,
-                ..default()
-            },
-            transform: Transform::from_xyz(-10.5, 1.7, -1.0)
-                .looking_at(Vec3::new(0.0, 3.5, 0.0), Vec3::Y),
-            projection: Projection::Perspective(PerspectiveProjection {
-                fov: std::f32::consts::PI / 3.0,
-                near: 0.1,
-                far: 1000.0,
-                aspect_ratio: 1.0,
-            }),
+        Msaa::Off,
+        Camera3d {
+            screen_space_specular_transmission_steps: 0,
+            screen_space_specular_transmission_quality: ScreenSpaceTransmissionQuality::Low,
             ..default()
         },
+        Camera {
+            hdr: true,
+            ..default()
+        },
+        Transform::from_xyz(-10.5, 1.7, -1.0).looking_at(Vec3::new(0.0, 3.5, 0.0), Vec3::Y),
+        Projection::Perspective(PerspectiveProjection {
+            fov: std::f32::consts::PI / 3.0,
+            near: 0.1,
+            far: 1000.0,
+            aspect_ratio: 1.0,
+        }),
         EnvironmentMapLight {
             diffuse_map: asset_server.load("environment_maps/san_giuseppe_bridge_4k_diffuse.ktx2"),
             specular_map: asset_server
                 .load("environment_maps/san_giuseppe_bridge_4k_specular.ktx2"),
             intensity: 600.0,
+            ..default()
         },
         CameraController::default().print_controls(),
     ));
     if !args.minimal {
         cam.insert((
-            BloomSettings {
+            Bloom {
                 intensity: 0.02,
                 ..default()
             },
-            TemporalAntiAliasBundle::default(),
+            TemporalAntiAliasing::default(),
         ))
-        .insert(ScreenSpaceAmbientOcclusionBundle::default());
+        .insert(ScreenSpaceAmbientOcclusion::default());
     }
 }
 
@@ -240,7 +225,7 @@ pub fn proc_scene(
     mut commands: Commands,
     flip_normals_query: Query<Entity, With<PostProcScene>>,
     children_query: Query<&Children>,
-    has_std_mat: Query<&Handle<StandardMaterial>>,
+    has_std_mat: Query<&MeshMaterial3d<StandardMaterial>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     lights: Query<
         Entity,
@@ -386,7 +371,7 @@ fn run_animation(
     if !*animation_active {
         return;
     }
-    let progress = (time.elapsed_seconds() * ANIM_SPEED).fract();
+    let progress = (time.elapsed_secs() * ANIM_SPEED).fract();
     let cycle = 1.0 - (progress * 2.0 - 1.0).abs();
     let path_state = follow_path(&ANIM_CAM, cycle);
     // LPF
@@ -399,8 +384,8 @@ fn benchmark(
     mut camera: Query<&mut Transform, With<Camera>>,
     materials: Res<Assets<StandardMaterial>>,
     meshes: Res<Assets<Mesh>>,
-    has_std_mat: Query<&Handle<StandardMaterial>>,
-    has_mesh: Query<&Handle<Mesh>>,
+    has_std_mat: Query<&MeshMaterial3d<StandardMaterial>>,
+    has_mesh: Query<&Mesh3d>,
     mut bench_started: Local<Option<Instant>>,
     mut bench_frame: Local<u32>,
     mut count_per_step: Local<u32>,
@@ -410,7 +395,7 @@ fn benchmark(
         *bench_started = Some(Instant::now());
         *bench_frame = 0;
         // Try to render for around 2s or at least 30 frames per step
-        *count_per_step = ((2.0 / time.delta_seconds()) as u32).max(30);
+        *count_per_step = ((2.0 / time.delta_secs()) as u32).max(30);
         println!(
             "Starting Benchmark with {} frames per step",
             *count_per_step
@@ -450,7 +435,13 @@ fn benchmark(
 
 pub fn add_no_frustum_culling(
     mut commands: Commands,
-    convert_query: Query<Entity, (Without<NoFrustumCulling>, With<Handle<StandardMaterial>>)>,
+    convert_query: Query<
+        Entity,
+        (
+            Without<NoFrustumCulling>,
+            With<MeshMaterial3d<StandardMaterial>>,
+        ),
+    >,
 ) {
     for entity in convert_query.iter() {
         commands.entity(entity).insert(NoFrustumCulling);

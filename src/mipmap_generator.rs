@@ -2,15 +2,13 @@
 
 use anyhow::anyhow;
 
+use bevy::image::{ImageSampler, ImageSamplerDescriptor};
+use bevy::platform_support::collections::HashMap;
 use bevy::render::render_asset::RenderAssetUsages;
 use bevy::{
     prelude::*,
-    render::{
-        render_resource::{Extent3d, TextureDimension, TextureFormat},
-        texture::{ImageSampler, ImageSamplerDescriptor},
-    },
+    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
     tasks::{AsyncComputeTaskPool, Task},
-    utils::HashMap,
 };
 use futures_lite::future;
 use image::{imageops::FilterType, DynamicImage, ImageBuffer};
@@ -55,20 +53,22 @@ impl Plugin for MipmapGeneratorPlugin {
 }
 
 #[derive(Resource, Default, Deref, DerefMut)]
-pub struct MipmapTasks<M: Material + GetImages>(HashMap<Handle<Image>, (Task<Image>, Handle<M>)>);
+pub struct MipmapTasks<M: Material + GetImages>(
+    HashMap<Handle<Image>, (Task<Image>, MeshMaterial3d<M>)>,
+);
 
 #[allow(clippy::too_many_arguments)]
 pub fn generate_mipmaps<M: Material + GetImages>(
     mut commands: Commands,
     mut material_events: EventReader<AssetEvent<M>>,
     mut materials: ResMut<Assets<M>>,
-    no_mipmap: Query<&Handle<M>, With<NoMipmapGeneration>>,
+    no_mipmap: Query<&MeshMaterial3d<M>, With<NoMipmapGeneration>>,
     mut images: ResMut<Assets<Image>>,
     default_sampler: Res<DefaultSampler>,
     settings: Res<MipmapGeneratorSettings>,
     mut tasks_res: Option<ResMut<MipmapTasks<M>>>,
 ) {
-    let mut new_tasks = MipmapTasks(HashMap::new());
+    let mut new_tasks = MipmapTasks(HashMap::default());
 
     let tasks = if let Some(ref mut tasks) = tasks_res {
         tasks
@@ -114,7 +114,10 @@ pub fn generate_mipmaps<M: Material + GetImages>(
                             }
                             image
                         });
-                        tasks.insert(image_h.clone(), (task, Handle::Weak(*material_h)));
+                        tasks.insert(
+                            image_h.clone(),
+                            (task, MeshMaterial3d(Handle::Weak(*material_h))),
+                        );
                     }
                 }
             }
