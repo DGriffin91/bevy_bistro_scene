@@ -100,9 +100,9 @@ pub fn camera_controller(
     mut move_toggled: Local<bool>,
     mut query: Query<(&mut Transform, &mut CameraController), With<Camera>>,
 ) {
-    let dt = time.delta_seconds();
+    let dt = time.delta_secs();
 
-    if let Ok((mut transform, mut options)) = query.get_single_mut() {
+    if let Ok((mut transform, mut options)) = query.single_mut() {
         if !options.initialized {
             let (_roll, yaw, pitch) = transform.rotation.to_euler(EulerRot::ZYX);
             options.yaw = yaw;
