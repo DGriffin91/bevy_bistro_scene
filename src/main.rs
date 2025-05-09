@@ -4,11 +4,12 @@
 use std::{
     f32::consts::PI,
     ops::{Add, Mul, Sub},
+    path::PathBuf,
     time::Instant,
 };
 
 mod camera_controller;
-mod mipmap_generator;
+pub mod mipmap_generator;
 
 use argh::FromArgs;
 use bevy::core_pipeline::bloom::Bloom;
@@ -51,6 +52,19 @@ pub struct Args {
     /// whether to disable frustum culling.
     #[argh(switch)]
     no_frustum_culling: bool,
+
+    /// compress textures (if they are not already, requires compress feature)
+    #[argh(switch)]
+    compress: bool,
+
+    /// if low_quality_compression is set, only 0.5 byte/px formats will be used (BC1, BC4) unless the alpha channel is in use, then BC3 will be used.
+    /// When low quality is set, compression is generally faster than CompressionSpeed::UltraFast and CompressionSpeed is ignored.
+    #[argh(switch)]
+    low_quality_compression: bool,
+
+    /// compressed texture cache (requires compress feature)
+    #[argh(switch)]
+    cache: bool,
 }
 
 pub fn main() {
@@ -89,6 +103,13 @@ pub fn main() {
         // Mipmap generation be skipped if ktx2 is used
         .insert_resource(MipmapGeneratorSettings {
             anisotropic_filtering: 16,
+            compression: Option::from(args.compress.then(Default::default)),
+            compressed_image_data_cache_path: if args.cache {
+                Some(PathBuf::from("compressed_texture_cache"))
+            } else {
+                None
+            },
+            low_quality: args.low_quality_compression,
             ..default()
         })
         .add_plugins((
@@ -243,6 +264,7 @@ pub fn proc_scene(
                 // Sponza needs flipped normals
                 if let Ok(mat_h) = has_std_mat.get(entity) {
                     if let Some(mat) = materials.get_mut(mat_h) {
+                        dbg!("!");
                         mat.flip_normal_map_y = true;
                         match mat.alpha_mode {
                             AlphaMode::Mask(_) => {
@@ -264,13 +286,13 @@ pub fn proc_scene(
                 if args.no_gltf_lights {
                     // Has a bunch of lights by default
                     if lights.get(entity).is_ok() {
-                        commands.entity(entity).despawn_recursive();
+                        commands.entity(entity).despawn();
                     }
                 }
 
                 // Has a bunch of cameras by default
                 if cameras.get(entity).is_ok() {
-                    commands.entity(entity).despawn_recursive();
+                    commands.entity(entity).despawn();
                 }
             });
             commands.entity(entity).remove::<PostProcScene>();
@@ -317,7 +339,7 @@ const ANIM_CAM: [Transform; 3] = [
 ];
 
 fn input(input: Res<ButtonInput<KeyCode>>, mut camera: Query<&mut Transform, With<Camera>>) {
-    let Ok(mut transform) = camera.get_single_mut() else {
+    let Ok(mut transform) = camera.single_mut() else {
         return;
     };
     if input.just_pressed(KeyCode::KeyI) {
@@ -362,7 +384,7 @@ fn run_animation(
     mut animation_active: Local<bool>,
     mut camera: Query<&mut Transform, With<Camera>>,
 ) {
-    let Ok(mut cam_tr) = camera.get_single_mut() else {
+    let Ok(mut cam_tr) = camera.single_mut() else {
         return;
     };
     if input.just_pressed(KeyCode::Space) {
@@ -404,7 +426,7 @@ fn benchmark(
     if bench_started.is_none() {
         return;
     }
-    let Ok(mut transform) = camera.get_single_mut() else {
+    let Ok(mut transform) = camera.single_mut() else {
         return;
     };
     if *bench_frame == 0 {
