@@ -12,17 +12,17 @@ mod camera_controller;
 pub mod mipmap_generator;
 
 use argh::FromArgs;
-use bevy::core_pipeline::bloom::Bloom;
-use bevy::core_pipeline::experimental::taa::TemporalAntiAliasing;
-use bevy::pbr::ScreenSpaceAmbientOcclusion;
 use bevy::{
-    core_pipeline::{
-        core_3d::ScreenSpaceTransmissionQuality, experimental::taa::TemporalAntiAliasPlugin,
-    },
+    anti_alias::taa::TemporalAntiAliasing, camera::visibility::NoFrustumCulling,
+    light::TransmittedShadowReceiver, pbr::ScreenSpaceAmbientOcclusion, post_process::bloom::Bloom,
+    render::render_resource::Face,
+};
+use bevy::{
+    camera::ScreenSpaceTransmissionQuality, light::CascadeShadowConfigBuilder, render::view::Hdr,
+};
+use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
-    pbr::{CascadeShadowConfigBuilder, TransmittedShadowReceiver},
     prelude::*,
-    render::{render_resource::Face, view::NoFrustumCulling},
     window::{PresentMode, WindowResolution},
     winit::{UpdateMode, WinitSettings},
 };
@@ -94,7 +94,7 @@ pub fn main() {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 present_mode: PresentMode::Immediate,
-                resolution: WindowResolution::new(1920.0, 1080.0).with_scale_factor_override(1.0),
+                resolution: WindowResolution::new(1920, 1080).with_scale_factor_override(1.0),
                 ..default()
             }),
             ..default()
@@ -117,7 +117,6 @@ pub fn main() {
             FrameTimeDiagnosticsPlugin::default(),
             CameraControllerPlugin,
             MipmapGeneratorPlugin,
-            TemporalAntiAliasPlugin,
         ))
         .add_systems(Startup, setup)
         .add_systems(
@@ -196,10 +195,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
             screen_space_specular_transmission_quality: ScreenSpaceTransmissionQuality::Low,
             ..default()
         },
-        Camera {
-            hdr: true,
-            ..default()
-        },
+        Hdr,
         Transform::from_xyz(-10.5, 1.7, -1.0).looking_at(Vec3::new(0.0, 3.5, 0.0), Vec3::Y),
         Projection::Perspective(PerspectiveProjection {
             fov: std::f32::consts::PI / 3.0,
@@ -264,7 +260,6 @@ pub fn proc_scene(
                 // Sponza needs flipped normals
                 if let Ok(mat_h) = has_std_mat.get(entity) {
                     if let Some(mat) = materials.get_mut(mat_h) {
-                        dbg!("!");
                         mat.flip_normal_map_y = true;
                         match mat.alpha_mode {
                             AlphaMode::Mask(_) => {

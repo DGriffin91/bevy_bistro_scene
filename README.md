@@ -1,5 +1,7 @@
 # Bevy Bistro Example
 
+Note bevy 0.17 has an issue using compressed textures: https://github.com/bevyengine/bevy/issues/21490
+
 Download scene from https://developer.nvidia.com/orca/amazon-lumberyard-bistro (or see link below for processed glTF files with instancing)
 
 Reexport BistroExterior.fbx and BistroInterior_Wine.fbx as GLTF files (in .gltf + .bin + textures format). Move the files into the respective bistro_exterior and bistro_interior_wine folders.
