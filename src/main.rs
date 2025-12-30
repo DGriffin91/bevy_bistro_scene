@@ -169,6 +169,9 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
     let bistro_exterior = asset_server.load("bistro_exterior/BistroExterior.gltf#Scene0");
     commands.spawn((SceneRoot(bistro_exterior.clone()), PostProcScene, Spin));
 
+    let bistro_interior = asset_server.load("bistro_interior_wine/BistroInterior_Wine.gltf#Scene0");
+    commands.spawn((SceneRoot(bistro_interior.clone()), PostProcScene, Spin));
+
     let mut count = 0;
     if args.count > 1 {
         let quantity = args.count - 1;
@@ -189,17 +192,16 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
                     PostProcScene,
                     Spin,
                 ));
+                commands.spawn((
+                    SceneRoot(bistro_interior.clone()),
+                    Transform::from_xyz(x as f32 * 150.0, 0.3, z as f32 * 150.0 - 0.2),
+                    PostProcScene,
+                    Spin,
+                ));
                 count += 1;
             }
         }
     }
-
-    commands.spawn((
-        SceneRoot(asset_server.load("bistro_interior_wine/BistroInterior_Wine.gltf#Scene0")),
-        Transform::from_xyz(0.0, 0.3, -0.2),
-        PostProcScene,
-        Spin,
-    ));
 
     if !args.no_gltf_lights {
         // In Repo glTF
