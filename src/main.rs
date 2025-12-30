@@ -79,14 +79,7 @@ pub fn main() {
     let mut app = App::new();
 
     app.insert_resource(args.clone())
-        // Using just rgb here for bevy 0.13 compat
         .insert_resource(ClearColor(Color::srgb(1.75, 1.9, 1.99)))
-        .insert_resource(AmbientLight {
-            // Using just rgb here for bevy 0.13 compat
-            color: Color::srgb(1.0, 1.0, 1.0),
-            brightness: 0.02,
-            affects_lightmapped_meshes: false,
-        })
         .insert_resource(WinitSettings {
             focused_mode: UpdateMode::Continuous,
             unfocused_mode: UpdateMode::Continuous,
@@ -202,6 +195,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
             near: 0.1,
             far: 1000.0,
             aspect_ratio: 1.0,
+            ..Default::default()
         }),
         EnvironmentMapLight {
             diffuse_map: asset_server.load("environment_maps/san_giuseppe_bridge_4k_diffuse.ktx2"),
