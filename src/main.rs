@@ -13,9 +13,12 @@ pub mod mipmap_generator;
 
 use argh::FromArgs;
 use bevy::{
-    anti_alias::taa::TemporalAntiAliasing, camera::visibility::NoFrustumCulling,
-    light::TransmittedShadowReceiver, pbr::ScreenSpaceAmbientOcclusion, post_process::bloom::Bloom,
-    render::render_resource::Face,
+    anti_alias::taa::TemporalAntiAliasing,
+    camera::visibility::NoFrustumCulling,
+    light::TransmittedShadowReceiver,
+    pbr::ScreenSpaceAmbientOcclusion,
+    post_process::bloom::Bloom,
+    render::{experimental::occlusion_culling::OcclusionCulling, render_resource::Face},
 };
 use bevy::{
     camera::ScreenSpaceTransmissionQuality, light::CascadeShadowConfigBuilder, render::view::Hdr,
@@ -76,6 +79,14 @@ pub struct Args {
     /// spin the bistros and camera
     #[argh(switch)]
     spin: bool,
+
+    /// disable gpu occlusion culling for the camera
+    #[argh(switch)]
+    no_view_occlusion_culling: bool,
+
+    /// disable gpu occlusion culling for the directional light
+    #[argh(switch)]
+    no_shadow_occlusion_culling: bool,
 }
 
 pub fn main() {
@@ -220,7 +231,8 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
             }
             .build(),
         ))
-        .insert(GrifLight);
+        .insert(GrifLight)
+        .insert_if(OcclusionCulling, || !args.no_shadow_occlusion_culling);
 
     // Camera
     let mut cam = commands.spawn((
@@ -249,6 +261,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
         CameraController::default().print_controls(),
         Spin,
     ));
+    cam.insert_if(OcclusionCulling, || !args.no_view_occlusion_culling);
     if !args.minimal {
         cam.insert((
             Bloom {

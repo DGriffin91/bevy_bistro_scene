@@ -5,6 +5,9 @@ edition = "2021"
 
 [dependencies]
 bevy = { git = "https://github.com/bevyengine/bevy" }
+#bevy = { git = "https://github.com/aevyrie/bevy", branch = "faster-vis-checks" }
+#bevy = { git = "https://github.com/aevyrie/bevy", branch = "par-mesh-collection" }
+#bevy = { git = "https://github.com/aevyrie/bevy", branch = "parallel-gpu-buffer-writes" }
 
 image = "0.25.2"
 fast_image_resize = { version = "5.4", features = ["image"] }
