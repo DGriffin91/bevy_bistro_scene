@@ -15,6 +15,7 @@ use argh::FromArgs;
 use bevy::{
     anti_alias::taa::TemporalAntiAliasing,
     camera::visibility::NoFrustumCulling,
+    diagnostic::DiagnosticsStore,
     light::TransmittedShadowReceiver,
     pbr::ScreenSpaceAmbientOcclusion,
     post_process::bloom::Bloom,
@@ -24,7 +25,7 @@ use bevy::{
     camera::ScreenSpaceTransmissionQuality, light::CascadeShadowConfigBuilder, render::view::Hdr,
 };
 use bevy::{
-    diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
+    diagnostic::FrameTimeDiagnosticsPlugin,
     prelude::*,
     window::{PresentMode, WindowResolution},
     winit::{UpdateMode, WinitSettings},
@@ -129,7 +130,6 @@ pub fn main() {
             ..default()
         })
         .add_plugins((
-            LogDiagnosticsPlugin::default(),
             FrameTimeDiagnosticsPlugin::default(),
             CameraControllerPlugin,
             MipmapGeneratorPlugin,
@@ -145,6 +145,7 @@ pub fn main() {
                 benchmark,
                 run_animation,
                 spin,
+                frame_time_system,
             ),
         );
     if args.no_frustum_culling {
@@ -162,6 +163,9 @@ pub struct Spin;
 
 #[derive(Component)]
 pub struct GrifLight;
+
+#[derive(Component)]
+struct StatsText;
 
 pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<Args>) {
     println!("Loading models, generating mipmaps");
@@ -274,6 +278,8 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
         ))
         .insert(ScreenSpaceAmbientOcclusion::default());
     }
+
+    commands.spawn((Text::new(""), StatsText));
 }
 
 pub fn all_children<F: FnMut(Entity)>(
@@ -541,4 +547,17 @@ pub fn add_no_frustum_culling(
     for entity in convert_query.iter() {
         commands.entity(entity).insert(NoFrustumCulling);
     }
+}
+
+fn frame_time_system(
+    diagnostics: Res<DiagnosticsStore>,
+    mut text: Single<&mut Text, With<StatsText>>,
+) {
+    if let Some(frame_time) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_TIME) {
+        text.0 = format!(
+            "{:>6.2}ms ema\n{:>6.2}ms sma\n",
+            frame_time.smoothed().unwrap_or_default(),
+            frame_time.average().unwrap_or_default()
+        );
+    };
 }
