@@ -469,10 +469,7 @@ fn spin(
     if args.spin {
         let camera_position = things_to_spin.get(*camera).unwrap().translation;
         let spin = |thing_to_spin: &mut Transform| {
-            thing_to_spin.rotate_around(
-                camera_position,
-                Quat::from_rotation_y(time.delta_secs() * 0.1),
-            );
+            thing_to_spin.rotate_around(camera_position, Quat::from_rotation_y(time.delta_secs()));
         };
         things_to_spin.iter_mut().for_each(|mut s| spin(s.as_mut())); // WHY
         positions.iter_mut().for_each(spin);
@@ -495,8 +492,8 @@ fn benchmark(
     if input.just_pressed(KeyCode::KeyB) && bench_started.is_none() {
         *bench_started = Some(Instant::now());
         *bench_frame = 0;
-        // Try to render for around 2s or at least 30 frames per step
-        *count_per_step = ((2.0 / time.delta_secs()) as u32).max(30);
+        // Try to render for around 3s or at least 60 frames per step
+        *count_per_step = ((3.0 / time.delta_secs()) as u32).max(60);
         println!(
             "Starting Benchmark with {} frames per step",
             *count_per_step
