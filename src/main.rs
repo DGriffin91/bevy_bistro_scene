@@ -72,6 +72,10 @@ pub struct Args {
     /// quantity of bistros
     #[argh(option, default = "1")]
     count: u32,
+
+    /// spin the bistros and camera
+    #[argh(switch)]
+    spin: bool,
 }
 
 pub fn main() {
@@ -85,7 +89,8 @@ pub fn main() {
 
     let mut app = App::new();
 
-    app.insert_resource(args.clone())
+    app.init_resource::<CameraPositions>()
+        .insert_resource(args.clone())
         .insert_resource(ClearColor(Color::srgb(1.75, 1.9, 1.99)))
         .insert_resource(WinitSettings {
             focused_mode: UpdateMode::Continuous,
@@ -128,6 +133,7 @@ pub fn main() {
                 input,
                 benchmark,
                 run_animation,
+                spin,
             ),
         );
     if args.no_frustum_culling {
@@ -141,13 +147,16 @@ pub fn main() {
 pub struct PostProcScene;
 
 #[derive(Component)]
+pub struct Spin;
+
+#[derive(Component)]
 pub struct GrifLight;
 
 pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<Args>) {
     println!("Loading models, generating mipmaps");
 
     let bistro_exterior = asset_server.load("bistro_exterior/BistroExterior.gltf#Scene0");
-    commands.spawn((SceneRoot(bistro_exterior.clone()), PostProcScene));
+    commands.spawn((SceneRoot(bistro_exterior.clone()), PostProcScene, Spin));
 
     let mut count = 0;
     if args.count > 1 {
@@ -167,6 +176,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
                     SceneRoot(bistro_exterior.clone()),
                     Transform::from_xyz(x as f32 * 150.0, 0.0, z as f32 * 150.0),
                     PostProcScene,
+                    Spin,
                 ));
                 count += 1;
             }
@@ -177,12 +187,14 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
         SceneRoot(asset_server.load("bistro_interior_wine/BistroInterior_Wine.gltf#Scene0")),
         Transform::from_xyz(0.0, 0.3, -0.2),
         PostProcScene,
+        Spin,
     ));
 
     if !args.no_gltf_lights {
         // In Repo glTF
-        commands.spawn(SceneRoot(
-            asset_server.load("BistroExteriorFakeGI.gltf#Scene0"),
+        commands.spawn((
+            SceneRoot(asset_server.load("BistroExteriorFakeGI.gltf#Scene0")),
+            Spin,
         ));
     }
 
@@ -235,6 +247,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
             ..default()
         },
         CameraController::default().print_controls(),
+        Spin,
     ));
     if !args.minimal {
         cam.insert((
@@ -319,23 +332,30 @@ pub fn proc_scene(
     }
 }
 
-const CAM_POS_1: Transform = Transform {
-    translation: Vec3::new(-10.5, 1.7, -1.0),
-    rotation: Quat::from_array([-0.05678932, 0.7372272, -0.062454797, -0.670351]),
-    scale: Vec3::ONE,
-};
+#[derive(Resource, Deref, DerefMut)]
+struct CameraPositions([Transform; 3]);
 
-const CAM_POS_2: Transform = Transform {
-    translation: Vec3::new(56.23809, 2.9985719, 28.96291),
-    rotation: Quat::from_array([0.0020175162, 0.35272083, -0.0007605003, 0.93572617]),
-    scale: Vec3::ONE,
-};
-
-const CAM_POS_3: Transform = Transform {
-    translation: Vec3::new(5.7861176, 3.3475509, -8.821455),
-    rotation: Quat::from_array([-0.0049382094, -0.98193514, -0.025878597, 0.18737496]),
-    scale: Vec3::ONE,
-};
+impl Default for CameraPositions {
+    fn default() -> Self {
+        Self([
+            Transform {
+                translation: Vec3::new(-10.5, 1.7, -1.0),
+                rotation: Quat::from_array([-0.05678932, 0.7372272, -0.062454797, -0.670351]),
+                scale: Vec3::ONE,
+            },
+            Transform {
+                translation: Vec3::new(56.23809, 2.9985719, 28.96291),
+                rotation: Quat::from_array([0.0020175162, 0.35272083, -0.0007605003, 0.93572617]),
+                scale: Vec3::ONE,
+            },
+            Transform {
+                translation: Vec3::new(5.7861176, 3.3475509, -8.821455),
+                rotation: Quat::from_array([-0.0049382094, -0.98193514, -0.025878597, 0.18737496]),
+                scale: Vec3::ONE,
+            },
+        ])
+    }
+}
 
 const ANIM_SPEED: f32 = 0.2;
 
@@ -357,7 +377,11 @@ const ANIM_CAM: [Transform; 3] = [
     },
 ];
 
-fn input(input: Res<ButtonInput<KeyCode>>, mut camera: Query<&mut Transform, With<Camera>>) {
+fn input(
+    input: Res<ButtonInput<KeyCode>>,
+    mut camera: Query<&mut Transform, With<Camera>>,
+    positions: Res<CameraPositions>,
+) {
     let Ok(mut transform) = camera.single_mut() else {
         return;
     };
@@ -365,13 +389,13 @@ fn input(input: Res<ButtonInput<KeyCode>>, mut camera: Query<&mut Transform, Wit
         info!("{:?}", transform);
     }
     if input.just_pressed(KeyCode::Digit1) {
-        *transform = CAM_POS_1
+        *transform = positions[0]
     }
     if input.just_pressed(KeyCode::Digit2) {
-        *transform = CAM_POS_2
+        *transform = positions[1]
     }
     if input.just_pressed(KeyCode::Digit3) {
-        *transform = CAM_POS_3
+        *transform = positions[2]
     }
 }
 
@@ -420,9 +444,29 @@ fn run_animation(
     cam_tr.rotation = lerp(cam_tr.rotation, path_state.rotation, 0.1);
 }
 
+fn spin(
+    camera: Single<Entity, With<Camera>>,
+    mut things_to_spin: Query<&mut Transform, With<Spin>>,
+    time: Res<Time>,
+    args: Res<Args>,
+    mut positions: ResMut<CameraPositions>,
+) {
+    if args.spin {
+        let camera_position = things_to_spin.get(*camera).unwrap().translation;
+        let spin = |thing_to_spin: &mut Transform| {
+            thing_to_spin.rotate_around(
+                camera_position,
+                Quat::from_rotation_y(time.delta_secs() * 0.1),
+            );
+        };
+        things_to_spin.iter_mut().for_each(|mut s| spin(s.as_mut())); // WHY
+        positions.iter_mut().for_each(spin);
+    }
+}
+
 fn benchmark(
     input: Res<ButtonInput<KeyCode>>,
-    mut camera: Query<&mut Transform, With<Camera>>,
+    mut camera_transform: Single<&mut Transform, With<Camera>>,
     materials: Res<Assets<StandardMaterial>>,
     meshes: Res<Assets<Mesh>>,
     has_std_mat: Query<&MeshMaterial3d<StandardMaterial>>,
@@ -431,6 +475,7 @@ fn benchmark(
     mut bench_frame: Local<u32>,
     mut count_per_step: Local<u32>,
     time: Res<Time>,
+    positions: Res<CameraPositions>,
 ) {
     if input.just_pressed(KeyCode::KeyB) && bench_started.is_none() {
         *bench_started = Some(Instant::now());
@@ -445,15 +490,12 @@ fn benchmark(
     if bench_started.is_none() {
         return;
     }
-    let Ok(mut transform) = camera.single_mut() else {
-        return;
-    };
     if *bench_frame == 0 {
-        *transform = CAM_POS_1
+        **camera_transform = positions[0]
     } else if *bench_frame == *count_per_step {
-        *transform = CAM_POS_2
+        **camera_transform = positions[1]
     } else if *bench_frame == *count_per_step * 2 {
-        *transform = CAM_POS_3
+        **camera_transform = positions[2]
     } else if *bench_frame == *count_per_step * 3 {
         let elapsed = bench_started.unwrap().elapsed().as_secs_f32();
         println!(
@@ -469,7 +511,7 @@ fn benchmark(
         );
         *bench_started = None;
         *bench_frame = 0;
-        *transform = CAM_POS_1;
+        **camera_transform = positions[0];
     }
     *bench_frame += 1;
 }
