@@ -12,5 +12,6 @@ Cargo.lock
 assets/bistro_exterior/*
 assets/bistro_interior_wine/*
 assets/no_inst/*
+compressed_texture_cache
 
 *.exe

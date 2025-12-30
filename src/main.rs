@@ -29,8 +29,11 @@ use bevy::{
 use camera_controller::{CameraController, CameraControllerPlugin};
 use mipmap_generator::{generate_mipmaps, MipmapGeneratorPlugin, MipmapGeneratorSettings};
 
-use crate::convert::{change_gltf_to_use_ktx2, convert_images_to_ktx2};
 use crate::light_consts::lux;
+use crate::{
+    convert::{change_gltf_to_use_ktx2, convert_images_to_ktx2},
+    mipmap_generator::MipmapGeneratorDebugTextPlugin,
+};
 
 mod convert;
 
@@ -65,6 +68,10 @@ pub struct Args {
     /// compressed texture cache (requires compress feature)
     #[argh(switch)]
     cache: bool,
+
+    /// quantity of bistros
+    #[argh(option, default = "1")]
+    count: u32,
 }
 
 pub fn main() {
@@ -110,6 +117,7 @@ pub fn main() {
             FrameTimeDiagnosticsPlugin::default(),
             CameraControllerPlugin,
             MipmapGeneratorPlugin,
+            MipmapGeneratorDebugTextPlugin,
         ))
         .add_systems(Startup, setup)
         .add_systems(
@@ -138,10 +146,32 @@ pub struct GrifLight;
 pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<Args>) {
     println!("Loading models, generating mipmaps");
 
-    commands.spawn((
-        SceneRoot(asset_server.load("bistro_exterior/BistroExterior.gltf#Scene0")),
-        PostProcScene,
-    ));
+    let bistro_exterior = asset_server.load("bistro_exterior/BistroExterior.gltf#Scene0");
+    commands.spawn((SceneRoot(bistro_exterior.clone()), PostProcScene));
+
+    let mut count = 0;
+    if args.count > 1 {
+        let quantity = args.count - 1;
+
+        let side = (quantity as f32).sqrt().ceil() as i32 / 2;
+
+        'outer: for x in -side..=side {
+            for z in -side..=side {
+                if count >= quantity {
+                    break 'outer;
+                }
+                if x == 0 && z == 0 {
+                    continue;
+                }
+                commands.spawn((
+                    SceneRoot(bistro_exterior.clone()),
+                    Transform::from_xyz(x as f32 * 150.0, 0.0, z as f32 * 150.0),
+                    PostProcScene,
+                ));
+                count += 1;
+            }
+        }
+    }
 
     commands.spawn((
         SceneRoot(asset_server.load("bistro_interior_wine/BistroInterior_Wine.gltf#Scene0")),
