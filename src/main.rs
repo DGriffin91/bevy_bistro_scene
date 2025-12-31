@@ -102,6 +102,7 @@ pub fn main() {
     let mut app = App::new();
 
     app.init_resource::<CameraPositions>()
+        .insert_resource(GlobalAmbientLight::NONE)
         .insert_resource(args.clone())
         .insert_resource(ClearColor(Color::srgb(1.75, 1.9, 1.99)))
         .insert_resource(WinitSettings {
