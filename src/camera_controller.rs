@@ -93,16 +93,16 @@ impl Default for CameraController {
 
 pub fn camera_controller(
     time: Res<Time>,
-    mut mouse_events: MessageReader<MouseMotion>,
+    mut mouse_events: EventReader<MouseMotion>,
     mouse_button_input: Res<ButtonInput<MouseButton>>,
-    mut scroll_evr: MessageReader<MouseWheel>,
+    mut scroll_evr: EventReader<MouseWheel>,
     key_input: Res<ButtonInput<KeyCode>>,
     mut move_toggled: Local<bool>,
     mut query: Query<(&mut Transform, &mut CameraController), With<Camera>>,
 ) {
     let dt = time.delta_secs();
 
-    if let Ok((mut transform, mut options)) = query.single_mut() {
+    if let Ok((mut transform, mut options)) = query.get_single_mut() {
         if !options.initialized {
             let (_roll, yaw, pitch) = transform.rotation.to_euler(EulerRot::ZYX);
             options.yaw = yaw;

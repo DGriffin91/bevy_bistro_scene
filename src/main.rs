@@ -13,16 +13,14 @@ pub mod mipmap_generator;
 
 use argh::FromArgs;
 use bevy::{
-    anti_alias::taa::TemporalAntiAliasing,
-    camera::visibility::NoFrustumCulling,
+    core_pipeline::{
+        bloom::Bloom,
+        core_3d::ScreenSpaceTransmissionQuality,
+        experimental::taa::{TemporalAntiAliasPlugin, TemporalAntiAliasing},
+    },
     diagnostic::DiagnosticsStore,
-    light::TransmittedShadowReceiver,
-    pbr::ScreenSpaceAmbientOcclusion,
-    post_process::bloom::Bloom,
-    render::{experimental::occlusion_culling::OcclusionCulling, render_resource::Face},
-};
-use bevy::{
-    camera::ScreenSpaceTransmissionQuality, light::CascadeShadowConfigBuilder, render::view::Hdr,
+    pbr::{CascadeShadowConfigBuilder, ScreenSpaceAmbientOcclusion, TransmittedShadowReceiver},
+    render::{render_resource::Face, view::NoFrustumCulling},
 };
 use bevy::{
     diagnostic::FrameTimeDiagnosticsPlugin,
@@ -80,14 +78,6 @@ pub struct Args {
     /// spin the bistros and camera
     #[argh(switch)]
     spin: bool,
-
-    /// disable gpu occlusion culling for the camera
-    #[argh(switch)]
-    no_view_occlusion_culling: bool,
-
-    /// disable gpu occlusion culling for the directional light
-    #[argh(switch)]
-    no_shadow_occlusion_culling: bool,
 }
 
 pub fn main() {
@@ -102,7 +92,7 @@ pub fn main() {
     let mut app = App::new();
 
     app.init_resource::<CameraPositions>()
-        .insert_resource(GlobalAmbientLight::NONE)
+        .insert_resource(AmbientLight::NONE)
         .insert_resource(args.clone())
         .insert_resource(ClearColor(Color::srgb(1.75, 1.9, 1.99)))
         .insert_resource(WinitSettings {
@@ -112,7 +102,7 @@ pub fn main() {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 present_mode: PresentMode::Immediate,
-                resolution: WindowResolution::new(1920, 1080).with_scale_factor_override(1.0),
+                resolution: WindowResolution::new(1920.0, 1080.0).with_scale_factor_override(1.0),
                 ..default()
             }),
             ..default()
@@ -135,6 +125,7 @@ pub fn main() {
             CameraControllerPlugin,
             MipmapGeneratorPlugin,
             MipmapGeneratorDebugTextPlugin,
+            TemporalAntiAliasPlugin,
         ))
         .add_systems(Startup, setup)
         .add_systems(
@@ -238,18 +229,20 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
             }
             .build(),
         ))
-        .insert(GrifLight)
-        .insert_if(OcclusionCulling, || !args.no_shadow_occlusion_culling);
+        .insert(GrifLight);
 
     // Camera
     let mut cam = commands.spawn((
         Msaa::Off,
+        Camera {
+            hdr: true,
+            ..default()
+        },
         Camera3d {
             screen_space_specular_transmission_steps: 0,
             screen_space_specular_transmission_quality: ScreenSpaceTransmissionQuality::Low,
             ..default()
         },
-        Hdr,
         Transform::from_xyz(-10.5, 1.7, -1.0).looking_at(Vec3::new(0.0, 3.5, 0.0), Vec3::Y),
         Projection::Perspective(PerspectiveProjection {
             fov: std::f32::consts::PI / 3.0,
@@ -268,7 +261,6 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
         CameraController::default().print_controls(),
         Spin,
     ));
-    cam.insert_if(OcclusionCulling, || !args.no_view_occlusion_culling);
     if !args.minimal {
         cam.insert((
             Bloom {
@@ -404,7 +396,7 @@ fn input(
     mut camera: Query<&mut Transform, With<Camera>>,
     positions: Res<CameraPositions>,
 ) {
-    let Ok(mut transform) = camera.single_mut() else {
+    let Ok(mut transform) = camera.get_single_mut() else {
         return;
     };
     if input.just_pressed(KeyCode::KeyI) {
@@ -449,7 +441,7 @@ fn run_animation(
     mut animation_active: Local<bool>,
     mut camera: Query<&mut Transform, With<Camera>>,
 ) {
-    let Ok(mut cam_tr) = camera.single_mut() else {
+    let Ok(mut cam_tr) = camera.get_single_mut() else {
         return;
     };
     if input.just_pressed(KeyCode::Space) {

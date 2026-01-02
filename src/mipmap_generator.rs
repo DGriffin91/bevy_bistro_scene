@@ -16,10 +16,10 @@ use bevy::{
     asset::RenderAssetUsages,
     image::{ImageSampler, ImageSamplerDescriptor},
     pbr::{ExtendedMaterial, MaterialExtension},
-    platform::collections::HashMap,
     prelude::*,
-    render::render_resource::{Extent3d, TextureDataOrder, TextureDimension, TextureFormat},
+    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
     tasks::{AsyncComputeTaskPool, Task},
+    utils::HashMap,
 };
 use futures_lite::future;
 use image::{imageops::FilterType, DynamicImage, ImageBuffer};
@@ -236,7 +236,7 @@ pub struct MaterialHandle<M: Material + GetImages>(pub Handle<M>);
 #[allow(clippy::too_many_arguments)]
 pub fn generate_mipmaps<M: Material + GetImages>(
     mut commands: Commands,
-    mut material_events: MessageReader<AssetEvent<M>>,
+    mut material_events: EventReader<AssetEvent<M>>,
     mut materials: ResMut<Assets<M>>,
     no_mipmap: Query<&MaterialHandle<M>, With<NoMipmapGeneration>>,
     mut images: ResMut<Assets<Image>>,
@@ -428,7 +428,7 @@ pub fn generate_mips_texture(
                 image.texture_descriptor.view_formats = &[];
             }
 
-            image.data = Some(new_image_data);
+            image.data = new_image_data;
             Ok(())
         }
         Err(e) => Err(e),
@@ -590,26 +590,17 @@ pub fn extract_mip_level(image: &Image, mip_level: u32) -> anyhow::Result<Image>
     };
 
     Ok(Image {
-        data: image
-            .data
-            .as_ref()
-            .map(|data| data[byte_offset..byte_offset + (width * block_size * height)].to_vec()),
-        data_order: TextureDataOrder::default(),
+        data: image.data[byte_offset..byte_offset + (width * block_size * height)].to_vec(),
+        //data_order: TextureDataOrder::default(),
         texture_descriptor: new_descriptor,
         sampler: image.sampler.clone(),
         texture_view_descriptor: image.texture_view_descriptor.clone(),
         asset_usage: RenderAssetUsages::default(),
-        copy_on_resize: false,
+        //copy_on_resize: false,
     })
 }
 
 pub fn check_image_compatible(image: &Image) -> anyhow::Result<()> {
-    if image.data.is_none() {
-        return Err(anyhow!(
-            "Image is a GPU storage texture which is not supported."
-        ));
-    }
-
     if image.is_compressed() {
         return Err(anyhow!("Compressed images not supported"));
     }
@@ -676,10 +667,6 @@ impl<T: GetImages + MaterialExtension> GetImages for ExtendedMaterial<StandardMa
             &self.base.clearcoat_normal_texture,
             #[cfg(feature = "pbr_anisotropy_texture")]
             &self.base.anisotropy_texture,
-            #[cfg(feature = "pbr_specular_textures")]
-            &self.base.specular_texture,
-            #[cfg(feature = "pbr_specular_textures")]
-            &self.base.specular_tint_texture,
         ]
         .into_iter()
         .flatten()
@@ -690,35 +677,29 @@ impl<T: GetImages + MaterialExtension> GetImages for ExtendedMaterial<StandardMa
 }
 
 pub fn try_into_dynamic(image: Image) -> anyhow::Result<DynamicImage> {
-    let Some(image_data) = image.data else {
-        return Err(anyhow!(
-            "Conversion into dynamic image not supported for GPU storage texture."
-        ));
-    };
-
     match image.texture_descriptor.format {
         TextureFormat::R8Unorm => ImageBuffer::from_raw(
             image.texture_descriptor.size.width,
             image.texture_descriptor.size.height,
-            image_data,
+            image.data,
         )
         .map(DynamicImage::ImageLuma8),
         TextureFormat::Rg8Unorm => ImageBuffer::from_raw(
             image.texture_descriptor.size.width,
             image.texture_descriptor.size.height,
-            image_data,
+            image.data,
         )
         .map(DynamicImage::ImageLumaA8),
         TextureFormat::Rgba8UnormSrgb => ImageBuffer::from_raw(
             image.texture_descriptor.size.width,
             image.texture_descriptor.size.height,
-            image_data,
+            image.data,
         )
         .map(DynamicImage::ImageRgba8),
         TextureFormat::Rgba8Unorm => ImageBuffer::from_raw(
             image.texture_descriptor.size.width,
             image.texture_descriptor.size.height,
-            image_data,
+            image.data,
         )
         .map(DynamicImage::ImageRgba8),
         // Throw and error if conversion isn't supported

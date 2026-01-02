@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-#bevy = "0.17"
-bevy = { git = "https://github.com/bevyengine/bevy" }
+bevy = "0.15.3"
+#bevy = { git = "https://github.com/bevyengine/bevy" }
 #bevy = { git = "https://github.com/aevyrie/bevy", branch = "faster-vis-checks" }
 #bevy = { git = "https://github.com/aevyrie/bevy", branch = "par-mesh-collection" }
 #bevy = { git = "https://github.com/aevyrie/bevy", branch = "parallel-gpu-buffer-writes" }
@@ -40,4 +40,3 @@ debug_text = ["bevy/bevy_ui"]
 pbr_transmission_textures = ["bevy/pbr_transmission_textures"]
 pbr_multi_layer_material_textures = ["bevy/pbr_multi_layer_material_textures"]
 pbr_anisotropy_texture = ["bevy/pbr_anisotropy_texture"]
-pbr_specular_textures = ["bevy/pbr_specular_textures"]
