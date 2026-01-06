@@ -20,6 +20,7 @@ use bevy::{
     pbr::ScreenSpaceAmbientOcclusion,
     post_process::bloom::Bloom,
     render::{experimental::occlusion_culling::OcclusionCulling, render_resource::Face},
+    scene::SceneInstanceReady,
 };
 use bevy::{
     camera::ScreenSpaceTransmissionQuality, light::CascadeShadowConfigBuilder, render::view::Hdr,
@@ -144,7 +145,6 @@ pub fn main() {
             Update,
             (
                 generate_mipmaps::<StandardMaterial>,
-                proc_scene,
                 input,
                 benchmark,
                 run_animation,
@@ -160,9 +160,6 @@ pub fn main() {
 }
 
 #[derive(Component)]
-pub struct PostProcScene;
-
-#[derive(Component)]
 pub struct Spin;
 
 #[derive(Component)]
@@ -172,10 +169,14 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
     println!("Loading models, generating mipmaps");
 
     let bistro_exterior = asset_server.load("bistro_exterior/BistroExterior.gltf#Scene0");
-    commands.spawn((SceneRoot(bistro_exterior.clone()), PostProcScene, Spin));
+    commands
+        .spawn((SceneRoot(bistro_exterior.clone()), Spin))
+        .observe(proc_scene);
 
     let bistro_interior = asset_server.load("bistro_interior_wine/BistroInterior_Wine.gltf#Scene0");
-    commands.spawn((SceneRoot(bistro_interior.clone()), PostProcScene, Spin));
+    commands
+        .spawn((SceneRoot(bistro_interior.clone()), Spin))
+        .observe(proc_scene);
 
     let mut count = 0;
     if args.count > 1 {
@@ -191,18 +192,20 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
                 if x == 0 && z == 0 {
                     continue;
                 }
-                commands.spawn((
-                    SceneRoot(bistro_exterior.clone()),
-                    Transform::from_xyz(x as f32 * 150.0, 0.0, z as f32 * 150.0),
-                    PostProcScene,
-                    Spin,
-                ));
-                commands.spawn((
-                    SceneRoot(bistro_interior.clone()),
-                    Transform::from_xyz(x as f32 * 150.0, 0.3, z as f32 * 150.0 - 0.2),
-                    PostProcScene,
-                    Spin,
-                ));
+                commands
+                    .spawn((
+                        SceneRoot(bistro_exterior.clone()),
+                        Transform::from_xyz(x as f32 * 150.0, 0.0, z as f32 * 150.0),
+                        Spin,
+                    ))
+                    .observe(proc_scene);
+                commands
+                    .spawn((
+                        SceneRoot(bistro_interior.clone()),
+                        Transform::from_xyz(x as f32 * 150.0, 0.3, z as f32 * 150.0 - 0.2),
+                        Spin,
+                    ))
+                    .observe(proc_scene);
                 count += 1;
             }
         }
@@ -296,54 +299,48 @@ pub fn all_children<F: FnMut(Entity)>(
     }
 }
 
-#[allow(clippy::type_complexity)]
 pub fn proc_scene(
+    scene_ready: On<SceneInstanceReady>,
     mut commands: Commands,
-    post_proc_query: Query<Entity, With<PostProcScene>>,
-    children_query: Query<&Children>,
+    children: Query<&Children>,
     has_std_mat: Query<&MeshMaterial3d<StandardMaterial>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     lights: Query<Entity, Or<(With<PointLight>, With<DirectionalLight>, With<SpotLight>)>>,
     cameras: Query<Entity, With<Camera>>,
     args: Res<Args>,
 ) {
-    for entity in post_proc_query.iter() {
-        if let Ok(children) = children_query.get(entity) {
-            all_children(children, &children_query, &mut |entity| {
-                // Sponza needs flipped normals
-                if let Ok(mat_h) = has_std_mat.get(entity) {
-                    if let Some(mat) = materials.get_mut(mat_h) {
-                        mat.flip_normal_map_y = true;
-                        match mat.alpha_mode {
-                            AlphaMode::Mask(_) => {
-                                mat.diffuse_transmission = 0.6;
-                                mat.double_sided = true;
-                                mat.cull_mode = None;
-                                mat.thickness = 0.2;
-                                commands.entity(entity).insert(TransmittedShadowReceiver);
-                            }
-                            AlphaMode::Opaque => {
-                                mat.double_sided = false;
-                                mat.cull_mode = Some(Face::Back);
-                            }
-                            _ => (),
-                        }
+    for entity in children.iter_descendants(scene_ready.entity) {
+        // Sponza needs flipped normals
+        if let Ok(mat_h) = has_std_mat.get(entity) {
+            if let Some(mat) = materials.get_mut(mat_h) {
+                mat.flip_normal_map_y = true;
+                match mat.alpha_mode {
+                    AlphaMode::Mask(_) => {
+                        mat.diffuse_transmission = 0.6;
+                        mat.double_sided = true;
+                        mat.cull_mode = None;
+                        mat.thickness = 0.2;
+                        commands.entity(entity).insert(TransmittedShadowReceiver);
                     }
-                }
-
-                if args.no_gltf_lights {
-                    // Has a bunch of lights by default
-                    if lights.get(entity).is_ok() {
-                        commands.entity(entity).despawn();
+                    AlphaMode::Opaque => {
+                        mat.double_sided = false;
+                        mat.cull_mode = Some(Face::Back);
                     }
+                    _ => (),
                 }
+            }
+        }
 
-                // Has a bunch of cameras by default
-                if cameras.get(entity).is_ok() {
-                    commands.entity(entity).despawn();
-                }
-            });
-            commands.entity(entity).remove::<PostProcScene>();
+        if args.no_gltf_lights {
+            // Has a bunch of lights by default
+            if lights.get(entity).is_ok() {
+                commands.entity(entity).despawn();
+            }
+        }
+
+        // Has a bunch of cameras by default
+        if cameras.get(entity).is_ok() {
+            commands.entity(entity).despawn();
         }
     }
 }
