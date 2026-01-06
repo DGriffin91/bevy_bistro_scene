@@ -222,19 +222,18 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
         .spawn((
             Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, PI * -0.35, PI * -0.13, 0.0)),
             DirectionalLight {
-                // Using just rgb here for bevy 0.13 compat
                 color: Color::srgb(1.0, 0.87, 0.78),
                 illuminance: lux::FULL_DAYLIGHT,
                 shadows_enabled: !args.minimal,
-                shadow_depth_bias: 0.2,
+                shadow_depth_bias: 0.1,
                 shadow_normal_bias: 0.2,
                 ..default()
             },
             CascadeShadowConfigBuilder {
-                num_cascades: 4,
-                minimum_distance: 0.1,
+                num_cascades: 3,
+                minimum_distance: 0.05,
                 maximum_distance: 100.0,
-                first_cascade_far_bound: 5.0,
+                first_cascade_far_bound: 10.0,
                 overlap_proportion: 0.2,
             }
             .build(),
