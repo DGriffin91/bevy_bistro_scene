@@ -163,9 +163,6 @@ pub struct PostProcScene;
 pub struct Spin;
 
 #[derive(Component)]
-pub struct GrifLight;
-
-#[derive(Component)]
 struct StatsText;
 
 pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<Args>) {
@@ -238,7 +235,6 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
             }
             .build(),
         ))
-        .insert(GrifLight)
         .insert_if(OcclusionCulling, || !args.no_shadow_occlusion_culling);
 
     // Camera
@@ -299,21 +295,15 @@ pub fn all_children<F: FnMut(Entity)>(
 #[allow(clippy::type_complexity)]
 pub fn proc_scene(
     mut commands: Commands,
-    flip_normals_query: Query<Entity, With<PostProcScene>>,
+    post_proc_query: Query<Entity, With<PostProcScene>>,
     children_query: Query<&Children>,
     has_std_mat: Query<&MeshMaterial3d<StandardMaterial>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    lights: Query<
-        Entity,
-        (
-            Or<(With<PointLight>, With<DirectionalLight>, With<SpotLight>)>,
-            Without<GrifLight>,
-        ),
-    >,
+    lights: Query<Entity, Or<(With<PointLight>, With<DirectionalLight>, With<SpotLight>)>>,
     cameras: Query<Entity, With<Camera>>,
     args: Res<Args>,
 ) {
-    for entity in flip_normals_query.iter() {
+    for entity in post_proc_query.iter() {
         if let Ok(children) = children_query.get(entity) {
             all_children(children, &children_query, &mut |entity| {
                 // Sponza needs flipped normals
@@ -380,6 +370,7 @@ impl Default for CameraPositions {
 }
 
 const ANIM_SPEED: f32 = 0.2;
+const ANIM_HYSTERESIS: f32 = 0.1; // EMA/LPF
 
 const ANIM_CAM: [Transform; 3] = [
     Transform {
@@ -461,9 +452,8 @@ fn run_animation(
     let progress = (time.elapsed_secs() * ANIM_SPEED).fract();
     let cycle = 1.0 - (progress * 2.0 - 1.0).abs();
     let path_state = follow_path(&ANIM_CAM, cycle);
-    // LPF
-    cam_tr.translation = lerp(cam_tr.translation, path_state.translation, 0.1);
-    cam_tr.rotation = lerp(cam_tr.rotation, path_state.rotation, 0.1).normalize();
+    cam_tr.translation = lerp(cam_tr.translation, path_state.translation, ANIM_HYSTERESIS);
+    cam_tr.rotation = lerp(cam_tr.rotation, path_state.rotation, ANIM_HYSTERESIS).normalize();
 }
 
 fn spin(
