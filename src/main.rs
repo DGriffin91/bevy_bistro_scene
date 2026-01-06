@@ -8,13 +8,13 @@ use std::{
     time::Instant,
 };
 
-mod camera_controller;
 pub mod mipmap_generator;
 
 use argh::FromArgs;
 use bevy::{
     anti_alias::taa::TemporalAntiAliasing,
     camera::visibility::NoFrustumCulling,
+    camera_controller::free_camera::{FreeCamera, FreeCameraPlugin},
     diagnostic::DiagnosticsStore,
     light::TransmittedShadowReceiver,
     pbr::ScreenSpaceAmbientOcclusion,
@@ -30,7 +30,6 @@ use bevy::{
     window::{PresentMode, WindowResolution},
     winit::{UpdateMode, WinitSettings},
 };
-use camera_controller::{CameraController, CameraControllerPlugin};
 use mipmap_generator::{generate_mipmaps, MipmapGeneratorPlugin, MipmapGeneratorSettings};
 
 use crate::light_consts::lux;
@@ -136,9 +135,9 @@ pub fn main() {
         })
         .add_plugins((
             FrameTimeDiagnosticsPlugin::default(),
-            CameraControllerPlugin,
             MipmapGeneratorPlugin,
             MipmapGeneratorDebugTextPlugin,
+            FreeCameraPlugin,
         ))
         .add_systems(Startup, setup)
         .add_systems(
@@ -264,7 +263,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
             intensity: 600.0,
             ..default()
         },
-        CameraController::default().print_controls(),
+        FreeCamera::default(),
         Spin,
     ));
     cam.insert_if(OcclusionCulling, || !args.no_view_occlusion_culling);
