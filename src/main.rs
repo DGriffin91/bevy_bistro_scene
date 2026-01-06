@@ -88,6 +88,10 @@ pub struct Args {
     /// disable gpu occlusion culling for the directional light
     #[argh(switch)]
     no_shadow_occlusion_culling: bool,
+
+    /// don't show frame time
+    #[argh(switch)]
+    hide_frame_time: bool,
 }
 
 pub fn main() {
@@ -163,7 +167,7 @@ pub struct PostProcScene;
 pub struct Spin;
 
 #[derive(Component)]
-struct StatsText;
+struct FrameTimeText;
 
 pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<Args>) {
     println!("Loading models, generating mipmaps");
@@ -276,7 +280,9 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
         .insert(ScreenSpaceAmbientOcclusion::default());
     }
 
-    commands.spawn((Text::new(""), StatsText));
+    if !args.hide_frame_time {
+        commands.spawn((Text::new(""), FrameTimeText));
+    }
 }
 
 pub fn all_children<F: FnMut(Entity)>(
@@ -542,11 +548,11 @@ pub fn add_no_frustum_culling(
 
 fn frame_time_system(
     diagnostics: Res<DiagnosticsStore>,
-    mut text: Single<&mut Text, With<StatsText>>,
+    mut text: Single<&mut Text, With<FrameTimeText>>,
 ) {
     if let Some(frame_time) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_TIME) {
         text.0 = format!(
-            "{:>6.2}ms ema\n{:>6.2}ms sma\n",
+            "\n{:>6.2}ms ema\n{:>6.2}ms sma\n",
             frame_time.smoothed().unwrap_or_default(),
             frame_time.average().unwrap_or_default()
         );
