@@ -463,7 +463,7 @@ fn run_animation(
     let path_state = follow_path(&ANIM_CAM, cycle);
     // LPF
     cam_tr.translation = lerp(cam_tr.translation, path_state.translation, 0.1);
-    cam_tr.rotation = lerp(cam_tr.rotation, path_state.rotation, 0.1);
+    cam_tr.rotation = lerp(cam_tr.rotation, path_state.rotation, 0.1).normalize();
 }
 
 fn spin(
