@@ -125,7 +125,7 @@ pub fn main() {
         // Mipmap generation be skipped if ktx2 is used
         .insert_resource(MipmapGeneratorSettings {
             anisotropic_filtering: 16,
-            compression: Option::from(args.compress.then(Default::default)),
+            compression: args.compress.then(Default::default),
             compressed_image_data_cache_path: if args.cache {
                 Some(PathBuf::from("compressed_texture_cache"))
             } else {
@@ -299,6 +299,7 @@ pub fn all_children<F: FnMut(Entity)>(
     }
 }
 
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn proc_scene(
     scene_ready: On<SceneInstanceReady>,
     mut commands: Commands,
@@ -474,6 +475,7 @@ fn spin(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn benchmark(
     input: Res<ButtonInput<KeyCode>>,
     mut camera_transform: Single<&mut Transform, With<Camera>>,
