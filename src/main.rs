@@ -8,27 +8,31 @@ use std::{
     time::Instant,
 };
 
+pub mod camera_controller;
 pub mod mipmap_generator;
 
 use argh::FromArgs;
 use bevy::{
-    anti_alias::taa::TemporalAntiAliasing,
-    camera::visibility::{NoCpuCulling, NoFrustumCulling},
-    camera_controller::free_camera::{FreeCamera, FreeCameraPlugin},
-    core_pipeline::prepass::{DeferredPrepass, DepthPrepass},
+    core_pipeline::{
+        bloom::Bloom,
+        core_3d::ScreenSpaceTransmissionQuality,
+        experimental::taa::{TemporalAntiAliasPlugin, TemporalAntiAliasing},
+        prepass::{DeferredPrepass, DepthPrepass},
+    },
     diagnostic::DiagnosticsStore,
-    light::TransmittedShadowReceiver,
-    pbr::{DefaultOpaqueRendererMethod, ScreenSpaceAmbientOcclusion},
-    post_process::bloom::Bloom,
+    pbr::{
+        CascadeShadowConfigBuilder, DefaultOpaqueRendererMethod, ScreenSpaceAmbientOcclusion,
+        TransmittedShadowReceiver,
+    },
     render::{
-        batching::NoAutomaticBatching, experimental::occlusion_culling::OcclusionCulling,
-        render_resource::Face, view::NoIndirectDrawing,
+        batching::NoAutomaticBatching,
+        experimental::occlusion_culling::OcclusionCulling,
+        render_resource::Face,
+        view::{NoCpuCulling, NoFrustumCulling, NoIndirectDrawing},
     },
     scene::SceneInstanceReady,
 };
-use bevy::{
-    camera::ScreenSpaceTransmissionQuality, light::CascadeShadowConfigBuilder, render::view::Hdr,
-};
+
 use bevy::{
     diagnostic::FrameTimeDiagnosticsPlugin,
     prelude::*,
@@ -37,7 +41,10 @@ use bevy::{
 };
 use mipmap_generator::{generate_mipmaps, MipmapGeneratorPlugin, MipmapGeneratorSettings};
 
-use crate::light_consts::lux;
+use crate::{
+    camera_controller::{FreeCamera, FreeCameraPlugin},
+    light_consts::lux,
+};
 use crate::{
     convert::{change_gltf_to_use_ktx2, convert_images_to_ktx2},
     mipmap_generator::MipmapGeneratorDebugTextPlugin,
@@ -127,7 +134,7 @@ pub fn main() {
 
     app.init_resource::<CameraPositions>()
         .init_resource::<FrameLowHigh>()
-        .insert_resource(GlobalAmbientLight::NONE)
+        //.insert_resource(GlobalAmbientLight::NONE)
         .insert_resource(args.clone())
         .insert_resource(ClearColor(Color::srgb(1.75, 1.9, 1.99)))
         .insert_resource(WinitSettings {
@@ -137,7 +144,7 @@ pub fn main() {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 present_mode: PresentMode::Immediate,
-                resolution: WindowResolution::new(1920, 1080).with_scale_factor_override(1.0),
+                resolution: WindowResolution::new(1920.0, 1080.0).with_scale_factor_override(1.0),
                 ..default()
             }),
             ..default()
@@ -163,6 +170,7 @@ pub fn main() {
             MipmapGeneratorPlugin,
             MipmapGeneratorDebugTextPlugin,
             FreeCameraPlugin,
+            TemporalAntiAliasPlugin,
         ))
         .add_systems(Startup, setup)
         .add_systems(
@@ -275,12 +283,15 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
     // Camera
     let mut cam = commands.spawn((
         Msaa::Off,
+        Camera {
+            hdr: true,
+            ..default()
+        },
         Camera3d {
             screen_space_specular_transmission_steps: 0,
             screen_space_specular_transmission_quality: ScreenSpaceTransmissionQuality::Low,
             ..default()
         },
-        Hdr,
         Transform::from_xyz(-10.5, 1.7, -1.0).looking_at(Vec3::new(0.0, 3.5, 0.0), Vec3::Y),
         Projection::Perspective(PerspectiveProjection {
             fov: std::f32::consts::PI / 3.0,
@@ -351,7 +362,7 @@ pub fn all_children<F: FnMut(Entity)>(
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn proc_scene(
-    scene_ready: On<SceneInstanceReady>,
+    scene_ready: Trigger<SceneInstanceReady>,
     mut commands: Commands,
     children: Query<&Children>,
     has_std_mat: Query<&MeshMaterial3d<StandardMaterial>>,
@@ -360,7 +371,7 @@ pub fn proc_scene(
     cameras: Query<Entity, With<Camera>>,
     args: Res<Args>,
 ) {
-    for entity in children.iter_descendants(scene_ready.entity) {
+    for entity in children.iter_descendants(scene_ready.target()) {
         // Sponza needs flipped normals
         if let Ok(mat_h) = has_std_mat.get(entity) {
             if let Some(mat) = materials.get_mut(mat_h) {

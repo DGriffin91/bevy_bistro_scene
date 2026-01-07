@@ -18,7 +18,7 @@ use bevy::{
     pbr::{ExtendedMaterial, MaterialExtension},
     platform::collections::HashMap,
     prelude::*,
-    render::render_resource::{Extent3d, TextureDataOrder, TextureDimension, TextureFormat},
+    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
     tasks::{AsyncComputeTaskPool, Task},
 };
 use futures_lite::future;
@@ -236,7 +236,7 @@ pub struct MaterialHandle<M: Material + GetImages>(pub Handle<M>);
 #[allow(clippy::too_many_arguments)]
 pub fn generate_mipmaps<M: Material + GetImages>(
     mut commands: Commands,
-    mut material_events: MessageReader<AssetEvent<M>>,
+    mut material_events: EventReader<AssetEvent<M>>,
     mut materials: ResMut<Assets<M>>,
     no_mipmap: Query<&MaterialHandle<M>, With<NoMipmapGeneration>>,
     mut images: ResMut<Assets<Image>>,
@@ -594,12 +594,12 @@ pub fn extract_mip_level(image: &Image, mip_level: u32) -> anyhow::Result<Image>
             .data
             .as_ref()
             .map(|data| data[byte_offset..byte_offset + (width * block_size * height)].to_vec()),
-        data_order: TextureDataOrder::default(),
+        //data_order: TextureDataOrder::default(),
         texture_descriptor: new_descriptor,
         sampler: image.sampler.clone(),
         texture_view_descriptor: image.texture_view_descriptor.clone(),
         asset_usage: RenderAssetUsages::default(),
-        copy_on_resize: false,
+        //copy_on_resize: false,
     })
 }
 
