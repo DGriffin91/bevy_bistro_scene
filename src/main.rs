@@ -13,13 +13,17 @@ pub mod mipmap_generator;
 use argh::FromArgs;
 use bevy::{
     anti_alias::taa::TemporalAntiAliasing,
-    camera::visibility::NoFrustumCulling,
+    camera::visibility::{NoCpuCulling, NoFrustumCulling},
     camera_controller::free_camera::{FreeCamera, FreeCameraPlugin},
+    core_pipeline::prepass::{DeferredPrepass, DepthPrepass},
     diagnostic::DiagnosticsStore,
     light::TransmittedShadowReceiver,
-    pbr::ScreenSpaceAmbientOcclusion,
+    pbr::{DefaultOpaqueRendererMethod, ScreenSpaceAmbientOcclusion},
     post_process::bloom::Bloom,
-    render::{experimental::occlusion_culling::OcclusionCulling, render_resource::Face},
+    render::{
+        batching::NoAutomaticBatching, experimental::occlusion_culling::OcclusionCulling,
+        render_resource::Face, view::NoIndirectDrawing,
+    },
     scene::SceneInstanceReady,
 };
 use bevy::{
@@ -56,10 +60,6 @@ pub struct Args {
     #[argh(switch)]
     minimal: bool,
 
-    /// whether to disable frustum culling.
-    #[argh(switch)]
-    no_frustum_culling: bool,
-
     /// compress textures (if they are not already, requires compress feature)
     #[argh(switch)]
     compress: bool,
@@ -81,6 +81,22 @@ pub struct Args {
     #[argh(switch)]
     spin: bool,
 
+    /// don't show frame time
+    #[argh(switch)]
+    hide_frame_time: bool,
+
+    /// use deferred shading
+    #[argh(switch)]
+    deferred: bool,
+
+    /// disable all frustum culling. Stresses queuing and batching as all mesh material entities in the scene are always drawn.
+    #[argh(switch)]
+    no_frustum_culling: bool,
+
+    /// disable automatic batching. Skips batching resulting in heavy stress on render pass draw command encoding.
+    #[argh(switch)]
+    no_automatic_batching: bool,
+
     /// disable gpu occlusion culling for the camera
     #[argh(switch)]
     no_view_occlusion_culling: bool,
@@ -89,9 +105,13 @@ pub struct Args {
     #[argh(switch)]
     no_shadow_occlusion_culling: bool,
 
-    /// don't show frame time
+    /// disable indirect drawing.
     #[argh(switch)]
-    hide_frame_time: bool,
+    no_indirect_drawing: bool,
+
+    /// disable CPU culling.
+    #[argh(switch)]
+    no_cpu_culling: bool,
 }
 
 pub fn main() {
@@ -157,8 +177,13 @@ pub fn main() {
             )
                 .chain(),
         );
+
     if args.no_frustum_culling {
         app.add_systems(Update, add_no_frustum_culling);
+    }
+
+    if args.deferred {
+        app.insert_resource(DefaultOpaqueRendererMethod::deferred());
     }
 
     app.run();
@@ -274,7 +299,13 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
         FreeCamera::default(),
         Spin,
     ));
-    cam.insert_if(OcclusionCulling, || !args.no_view_occlusion_culling);
+    cam.insert_if(DepthPrepass, || args.deferred)
+        .insert_if(DeferredPrepass, || args.deferred)
+        .insert_if(OcclusionCulling, || !args.no_view_occlusion_culling)
+        .insert_if(NoFrustumCulling, || args.no_frustum_culling)
+        .insert_if(NoAutomaticBatching, || args.no_automatic_batching)
+        .insert_if(NoIndirectDrawing, || args.no_indirect_drawing)
+        .insert_if(NoCpuCulling, || args.no_cpu_culling);
     if !args.minimal {
         cam.insert((
             Bloom {
