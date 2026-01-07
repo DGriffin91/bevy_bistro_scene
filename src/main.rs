@@ -8,13 +8,13 @@ use std::{
     time::Instant,
 };
 
+pub mod camera_controller;
 pub mod mipmap_generator;
 
 use argh::FromArgs;
 use bevy::{
     anti_alias::taa::TemporalAntiAliasing,
     camera::visibility::{NoCpuCulling, NoFrustumCulling},
-    camera_controller::free_camera::{FreeCamera, FreeCameraPlugin},
     core_pipeline::prepass::{DeferredPrepass, DepthPrepass},
     diagnostic::DiagnosticsStore,
     light::TransmittedShadowReceiver,
@@ -37,7 +37,10 @@ use bevy::{
 };
 use mipmap_generator::{generate_mipmaps, MipmapGeneratorPlugin, MipmapGeneratorSettings};
 
-use crate::light_consts::lux;
+use crate::{
+    camera_controller::{FreeCamera, FreeCameraPlugin},
+    light_consts::lux,
+};
 use crate::{
     convert::{change_gltf_to_use_ktx2, convert_images_to_ktx2},
     mipmap_generator::MipmapGeneratorDebugTextPlugin,
@@ -127,7 +130,7 @@ pub fn main() {
 
     app.init_resource::<CameraPositions>()
         .init_resource::<FrameLowHigh>()
-        .insert_resource(GlobalAmbientLight::NONE)
+        .insert_resource(AmbientLight::NONE)
         .insert_resource(args.clone())
         .insert_resource(ClearColor(Color::srgb(1.75, 1.9, 1.99)))
         .insert_resource(WinitSettings {
