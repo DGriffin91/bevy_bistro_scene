@@ -106,6 +106,7 @@ pub fn main() {
     let mut app = App::new();
 
     app.init_resource::<CameraPositions>()
+        .init_resource::<FrameLowHigh>()
         .insert_resource(GlobalAmbientLight::NONE)
         .insert_resource(args.clone())
         .insert_resource(ClearColor(Color::srgb(1.75, 1.9, 1.99)))
@@ -135,7 +136,10 @@ pub fn main() {
             ..default()
         })
         .add_plugins((
-            FrameTimeDiagnosticsPlugin::default(),
+            FrameTimeDiagnosticsPlugin {
+                max_history_length: 1000,
+                ..default()
+            },
             MipmapGeneratorPlugin,
             MipmapGeneratorDebugTextPlugin,
             FreeCameraPlugin,
@@ -146,11 +150,12 @@ pub fn main() {
             (
                 generate_mipmaps::<StandardMaterial>,
                 input,
-                benchmark,
                 run_animation,
                 spin,
                 frame_time_system,
-            ),
+                benchmark,
+            )
+                .chain(),
         );
     if args.no_frustum_culling {
         app.add_systems(Update, add_no_frustum_culling);
@@ -282,7 +287,21 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>, args: Res<A
     }
 
     if !args.hide_frame_time {
-        commands.spawn((Text::new(""), FrameTimeText));
+        commands
+            .spawn((
+                Node {
+                    left: Val::Px(1.5),
+                    top: Val::Px(1.5),
+                    ..default()
+                },
+                GlobalZIndex(-1),
+            ))
+            .with_children(|parent| {
+                parent.spawn((Text::new(""), TextColor(Color::BLACK), FrameTimeText));
+            });
+        commands.spawn(Node::default()).with_children(|parent| {
+            parent.spawn((Text::new(""), TextColor(Color::WHITE), FrameTimeText));
+        });
     }
 }
 
@@ -488,8 +507,10 @@ fn benchmark(
     mut count_per_step: Local<u32>,
     time: Res<Time>,
     positions: Res<CameraPositions>,
+    mut low_high: ResMut<FrameLowHigh>,
 ) {
     if input.just_pressed(KeyCode::KeyB) && bench_started.is_none() {
+        low_high.bench_reset();
         *bench_started = Some(Instant::now());
         *bench_frame = 0;
         // Try to render for around 3s or at least 60 frames per step
@@ -511,11 +532,14 @@ fn benchmark(
     } else if *bench_frame == *count_per_step * 3 {
         let elapsed = bench_started.unwrap().elapsed().as_secs_f32();
         println!(
-            "Benchmark avg cpu frame time: {:.2}ms",
+            "{:>7.2}ms Benchmark avg cpu frame time",
             (elapsed / *bench_frame as f32) * 1000.0
         );
+        let r = 1.0 / *bench_frame as f64;
+        println!("{:>7.2}ms avg 1% low", low_high.sum_one_percent_low * r);
+        println!("{:>7.2}ms avg 1% high", low_high.sum_one_percent_high * r);
         println!(
-            "Meshes: {}\nMesh Instances: {}\nMaterials: {}\nMaterial Instances: {}",
+            "{:>7} Meshes\n{:>7} Mesh Instances\n{:>7} Materials\n{:>7} Material Instances",
             meshes.len(),
             has_mesh.iter().len(),
             materials.len(),
@@ -526,6 +550,7 @@ fn benchmark(
         **camera_transform = positions[0];
     }
     *bench_frame += 1;
+    low_high.bench_step();
 }
 
 pub fn add_no_frustum_culling(
@@ -543,15 +568,55 @@ pub fn add_no_frustum_culling(
     }
 }
 
+#[derive(Resource, Default)]
+struct FrameLowHigh {
+    one_percent_low: f64,
+    one_percent_high: f64,
+    sum_one_percent_low: f64,
+    sum_one_percent_high: f64,
+}
+
+impl FrameLowHigh {
+    fn bench_reset(&mut self) {
+        self.sum_one_percent_high = 0.0;
+        self.sum_one_percent_low = 0.0;
+    }
+    fn bench_step(&mut self) {
+        self.sum_one_percent_high += self.one_percent_high;
+        self.sum_one_percent_low += self.one_percent_low;
+    }
+}
+
 fn frame_time_system(
     diagnostics: Res<DiagnosticsStore>,
-    mut text: Single<&mut Text, With<FrameTimeText>>,
+    mut text: Query<&mut Text, With<FrameTimeText>>,
+    mut measurements: Local<Vec<f64>>,
+    mut low_high: ResMut<FrameLowHigh>,
 ) {
     if let Some(frame_time) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_TIME) {
-        text.0 = format!(
-            "\n{:>6.2}ms ema\n{:>6.2}ms sma\n",
+        let mut string = format!(
+            "\n{:>7.2}ms ema\n{:>7.2}ms sma\n",
             frame_time.smoothed().unwrap_or_default(),
             frame_time.average().unwrap_or_default()
         );
+
+        if frame_time.history_len() >= 100 {
+            measurements.clear();
+            measurements.extend(frame_time.measurements().map(|t| t.value));
+            measurements.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let count = measurements.len() / 100;
+            low_high.one_percent_low = measurements.iter().take(count).sum::<f64>() / count as f64;
+            low_high.one_percent_high =
+                measurements.iter().rev().take(count).sum::<f64>() / count as f64;
+
+            string.push_str(&format!(
+                "{:>7.2}ms 1% low\n{:>7.2}ms 1% high\n",
+                low_high.one_percent_low, low_high.one_percent_high
+            ));
+        }
+
+        for mut t in &mut text {
+            t.0 = string.clone();
+        }
     };
 }
