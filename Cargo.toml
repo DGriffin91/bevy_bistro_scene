@@ -4,11 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-#bevy = "0.17"
-bevy = { git = "https://github.com/bevyengine/bevy", features = ["bevy_camera_controller", "free_camera"] }
-#bevy = { git = "https://github.com/aevyrie/bevy", branch = "faster-vis-checks" }
-#bevy = { git = "https://github.com/aevyrie/bevy", branch = "par-mesh-collection" }
-#bevy = { git = "https://github.com/aevyrie/bevy", branch = "parallel-gpu-buffer-writes" }
+bevy = { version = "0.18", features = [
+    "bevy_camera_controller",
+    "free_camera",
+] }
 
 image = "0.25.2"
 fast_image_resize = { version = "5.4", features = ["image"] }

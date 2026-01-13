@@ -1,6 +1,6 @@
 # Bevy Bistro Example
 
-Note bevy 0.17 has an issue using compressed textures: https://github.com/bevyengine/bevy/issues/21490
+Note bevy 0.18 has an issue using compressed textures: https://github.com/bevyengine/bevy/issues/21490
 
 Download scene from https://developer.nvidia.com/orca/amazon-lumberyard-bistro (or see link below for processed glTF files with instancing)
 
@@ -12,7 +12,8 @@ Reexport BistroExterior.fbx and BistroInterior_Wine.fbx as GLTF files (in .gltf 
 - Press B for benchmark.
 - Press to animate camera along path. 
 
-To optionally convert the textures to KTX2 use: `cargo run -- --convert`. You need [kram](https://github.com/alecazam/kram) in your path to do this. It will convert all the textures to BC7 KTX2 zstd 0 using `available_parallelism()` and update the gltf files to use the KTX2 textures.
+To optionally convert the textures to KTX2 use: `cargo run -- --convert`. You need [kram](https://github.com/alecazam/kram) in your path to do this. It will convert all the textures to BC7 KTX2 zstd 0 using `available_parallelism()` and update the gltf files to use the KTX2 textures. Or use `compress` feature with `--compress` arg to generate compressed textures with mipmaps at runtime. `--cache` will additionally cache the compressed textures. So to run with cached runtime compression:
+`cargo run --release --features compress -- --compress --cache`
 
 [Alternate processed files with instancing (glTF files on discord):](https://discord.com/channels/691052431525675048/1237853896471220314/1237859248067575910)
 
