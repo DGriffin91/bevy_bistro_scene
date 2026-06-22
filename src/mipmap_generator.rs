@@ -22,7 +22,7 @@ use bevy::{
     tasks::{AsyncComputeTaskPool, Task},
 };
 use futures_lite::future;
-use image::{imageops::FilterType, DynamicImage, ImageBuffer};
+use image::{DynamicImage, ImageBuffer, imageops::FilterType};
 
 #[derive(Resource, Deref)]
 pub struct DefaultSampler(ImageSamplerDescriptor);
@@ -167,7 +167,7 @@ fn init_loading_text(mut commands: Commands) {
             parent.spawn((
                 Text::new(""),
                 TextFont {
-                    font_size: 18.0,
+                    font_size: FontSize::Px(18.0),
                     ..default()
                 },
                 TextColor(Color::BLACK),
@@ -178,7 +178,7 @@ fn init_loading_text(mut commands: Commands) {
         parent.spawn((
             Text::new(""),
             TextFont {
-                font_size: 18.0,
+                font_size: FontSize::Px(18.0),
                 ..default()
             },
             TextColor(Color::WHITE),
@@ -273,7 +273,7 @@ pub fn generate_mipmaps<M: Material + GetImages>(
                     material_handles.push(*material_h);
                     continue; //There is already a task for this image
                 }
-                if let Some(image) = images.get_mut(image_h) {
+                if let Some(mut image) = images.get_mut(image_h) {
                     let mut descriptor = match image.sampler.clone() {
                         ImageSampler::Default => default_sampler.0.clone(),
                         ImageSampler::Descriptor(descriptor) => descriptor,
@@ -281,7 +281,7 @@ pub fn generate_mipmaps<M: Material + GetImages>(
                     descriptor.anisotropy_clamp = settings.anisotropic_filtering;
                     image.sampler = ImageSampler::Descriptor(descriptor);
                     if image.texture_descriptor.mip_level_count == 1
-                        && check_image_compatible(image).is_ok()
+                        && check_image_compatible(&image).is_ok()
                     {
                         let mut image = image.clone();
                         let settings = settings.clone();
@@ -315,7 +315,7 @@ pub fn generate_mipmaps<M: Material + GetImages>(
     tasks.retain(|image_h, (task, material_handles)| {
         match future::block_on(future::poll_once(task)) {
             Some(task_data) => {
-                if let Some(image) = images.get_mut(image_h) {
+                if let Some(mut image) = images.get_mut(image_h) {
                     *image = task_data.image;
                     progress.processed += 1;
                     let prev_cached_data_gb = bytes_to_gb(progress.cached_data_size_bytes);
@@ -329,7 +329,7 @@ pub fn generate_mipmaps<M: Material + GetImages>(
                     }
                     // Touch material to trigger change detection
                     for material_h in material_handles.iter() {
-                        let _ = materials.get_mut(*material_h);
+                        let _ = materials.get_mut(*material_h).as_deref_mut();
                     }
                 }
                 false
@@ -409,7 +409,7 @@ pub fn generate_mips_texture(
             );
 
             if !loaded_from_cache {
-                new_image_data = generate_mips(&mut dyn_image, has_alpha, mip_count, settings);
+                new_image_data = generate_mips(&mut dyn_image, has_alpha, mip_count, &settings);
                 #[cfg(feature = "compress")]
                 if let Some(cache_path) = &settings.compressed_image_data_cache_path {
                     if compression_speed.is_some() && compressed_format.is_some() {
@@ -461,7 +461,9 @@ pub fn generate_mips(
 
     #[cfg(not(feature = "compress"))]
     if settings.compression.is_some() {
-        warn!("Compression is Some but compress feature is disabled. Falling back to generating mips without compression.")
+        warn!(
+            "Compression is Some but compress feature is disabled. Falling back to generating mips without compression."
+        )
     }
 
     let mut image_data = compressed_image_data.unwrap_or(dyn_image.as_bytes().to_vec());
@@ -726,7 +728,7 @@ pub fn try_into_dynamic(image: Image) -> anyhow::Result<DynamicImage> {
             return Err(anyhow!(
                 "Conversion into dynamic image not supported for {:?}.",
                 texture_format
-            ))
+            ));
         }
     }
     .ok_or_else(|| {
@@ -803,7 +805,7 @@ fn bcn_compress_dyn_image(
                 return Err(anyhow!(
                     "Conversion into dynamic image not supported for {:?}.",
                     dyn_image
-                ))
+                ));
             }
         };
     } else {
@@ -847,7 +849,7 @@ fn bcn_compress_dyn_image(
                 return Err(anyhow!(
                     "Conversion into dynamic image not supported for {:?}.",
                     dyn_image
-                ))
+                ));
             }
         };
     }
@@ -875,10 +877,12 @@ pub fn bcn_equivalent_format_of_dyn_image(
                 } else {
                     TextureFormat::Bc3RgbaUnorm
                 }
-            } else if is_srgb {
-                TextureFormat::Bc1RgbaUnormSrgb
             } else {
-                TextureFormat::Bc1RgbaUnorm
+                if is_srgb {
+                    TextureFormat::Bc1RgbaUnormSrgb
+                } else {
+                    TextureFormat::Bc1RgbaUnorm
+                }
             }),
             // Throw and error if conversion isn't supported
             dyn_image => Err(anyhow!(
